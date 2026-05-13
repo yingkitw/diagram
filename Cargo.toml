@@ -1,0 +1,18 @@
+[package]
+name = "diagram"
+version = "0.1.0"
+edition = "2021"
+description = "A Rust CLI and MCP server for manipulating diagram"
+authors = ["Ying Kit WONG"]
+license = "Apache-2.0"
+repository = "https://github.com/yingkitw/diagram"
+readme = "README.md"
+
+[dependencies]
+rmcp = { version = "1.6", features = ["server", "transport-io", "macros"] }
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+schemars = "1"
