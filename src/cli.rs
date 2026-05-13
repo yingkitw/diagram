@@ -103,20 +103,26 @@ fn cmd_parse(path: &str) -> anyhow::Result<()> {
 
 fn cmd_info(path: &str) -> anyhow::Result<()> {
     let diagram = read_diagram(path)?;
-    let mut shapes = vec![0usize; 3];
+    let mut shapes = vec![0usize; 6];
     for n in &diagram.nodes {
         shapes[match n.shape {
             dg::NodeShape::Rect => 0,
             dg::NodeShape::Diamond => 1,
             dg::NodeShape::Stadium => 2,
+            dg::NodeShape::Hexagon => 3,
+            dg::NodeShape::Cylinder => 4,
+            dg::NodeShape::Circle => 5,
         }] += 1;
     }
     println!("File: {path}");
     println!("Direction: {}", diagram.rankdir);
     println!("Nodes: {}", diagram.nodes.len());
-    println!("  rect:    {}", shapes[0]);
-    println!("  diamond: {}", shapes[1]);
-    println!("  stadium: {}", shapes[2]);
+    println!("  rect:     {}", shapes[0]);
+    println!("  diamond:  {}", shapes[1]);
+    println!("  stadium:  {}", shapes[2]);
+    println!("  hexagon:  {}", shapes[3]);
+    println!("  cylinder: {}", shapes[4]);
+    println!("  circle:   {}", shapes[5]);
     println!("Edges: {}", diagram.edges.len());
     Ok(())
 }
@@ -204,6 +210,7 @@ fn cmd_add_edge(
             from: from.to_string(),
             to: to.to_string(),
             label: label.unwrap_or("").to_string(),
+            style: dg::EdgeStyle::Arrow,
         })
         .map_err(|e| anyhow::anyhow!("{}", e))?;
     write_diagram(path, &diagram)?;

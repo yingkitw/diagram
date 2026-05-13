@@ -1,4 +1,4 @@
-use crate::diagram::{Diagram, Edge, Node, NodeShape};
+use crate::diagram::{Diagram, Edge, EdgeStyle, Node, NodeShape};
 use std::collections::HashSet;
 
 pub fn parse(source: &str) -> Result<Diagram, String> {
@@ -27,20 +27,17 @@ pub fn parse(source: &str) -> Result<Diagram, String> {
             continue;
         }
 
-        let segments = split_arrows(line);
+        let pl = split_arrows(line);
         let mut prev_id: Option<String> = None;
         let mut pending_label: Option<String> = None;
 
-        for (i, (part, is_arrow)) in segments.iter().enumerate() {
-            let part = part.trim();
-            if *is_arrow {
-                continue;
-            }
-            if part.is_empty() {
+        for (i, segment) in pl.segments.iter().enumerate() {
+            let segment = segment.trim();
+            if segment.is_empty() {
                 continue;
             }
 
-            let (label, rest) = extract_label(part, pending_label.take());
+            let (label, rest) = extract_label(segment, pending_label.take());
             if let Some(l) = label {
                 pending_label = Some(l);
             }
@@ -56,28 +53,30 @@ pub fn parse(source: &str) -> Result<Diagram, String> {
                 };
                 ensure_node(&id, &text, shape, &mut nodes, &mut seen_ids);
                 let lbl = pending_label.take().unwrap_or_default();
+                let style = pl
+                    .arrow_types
+                    .get(i - 1)
+                    .copied()
+                    .unwrap_or(EdgeStyle::Arrow);
                 if let Some(ref prev) = prev_id {
                     edges.push(Edge {
                         from: prev.clone(),
                         to: id.clone(),
                         label: lbl,
+                        style,
                     });
                 }
                 prev_id = Some(id);
             } else {
-                let parts: Vec<&str> = rest
-                    .split(|c: char| c == ',' || c.is_whitespace())
-                    .map(|s| s.trim())
-                    .filter(|s| !s.is_empty())
-                    .collect();
-                for p in parts {
-                    if let Some((id, text, shape)) = parse_node_def(p) {
+                for p in split_nodes(&rest) {
+                    if let Some((id, text, shape)) = parse_node_def(&p) {
                         ensure_node(&id, &text, shape, &mut nodes, &mut seen_ids);
                         if let Some(ref prev) = prev_id {
                             edges.push(Edge {
                                 from: prev.clone(),
                                 to: id.to_string(),
                                 label: String::new(),
+                                style: EdgeStyle::Arrow,
                             });
                         }
                         prev_id = Some(id);
@@ -94,24 +93,53 @@ pub fn parse(source: &str) -> Result<Diagram, String> {
     })
 }
 
-fn split_arrows(s: &str) -> Vec<(String, bool)> {
-    let mut result: Vec<(String, bool)> = Vec::new();
+struct ParsedLine {
+    segments: Vec<String>,
+    arrow_types: Vec<EdgeStyle>,
+}
+
+fn split_arrows(s: &str) -> ParsedLine {
+    let mut segments: Vec<String> = Vec::new();
+    let mut arrow_types: Vec<EdgeStyle> = Vec::new();
     let mut start = 0;
     let bytes = s.as_bytes();
     let len = bytes.len();
     let mut i = 0;
 
     while i < len {
-        if i + 3 <= len && &s[i..i + 3] == "-->" {
+        if i + 4 <= len && &s[i..i + 4] == "-.->" {
             if i > start {
-                result.push((s[start..i].to_string(), false));
+                segments.push(s[start..i].to_string());
             }
+            arrow_types.push(EdgeStyle::Dashed);
+            i += 4;
+            start = i;
+        } else if i + 3 <= len && &s[i..i + 3] == "-->" {
+            if i > start {
+                segments.push(s[start..i].to_string());
+            }
+            arrow_types.push(EdgeStyle::Arrow);
+            i += 3;
+            start = i;
+        } else if i + 3 <= len && &s[i..i + 3] == "==>" {
+            if i > start {
+                segments.push(s[start..i].to_string());
+            }
+            arrow_types.push(EdgeStyle::Thick);
+            i += 3;
+            start = i;
+        } else if i + 3 <= len && &s[i..i + 3] == "===" {
+            if i > start {
+                segments.push(s[start..i].to_string());
+            }
+            arrow_types.push(EdgeStyle::Thick);
             i += 3;
             start = i;
         } else if i + 2 <= len && &s[i..i + 2] == "->" {
             if i > start {
-                result.push((s[start..i].to_string(), false));
+                segments.push(s[start..i].to_string());
             }
+            arrow_types.push(EdgeStyle::Arrow);
             i += 2;
             start = i;
         } else {
@@ -119,9 +147,20 @@ fn split_arrows(s: &str) -> Vec<(String, bool)> {
         }
     }
     if start < len {
-        result.push((s[start..].to_string(), false));
+        segments.push(s[start..].to_string());
     }
-    result
+
+    ParsedLine {
+        segments,
+        arrow_types,
+    }
+}
+
+fn split_nodes(s: &str) -> Vec<String> {
+    s.split(|c: char| c == ',' || c.is_whitespace())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 fn extract_label(s: &str, existing: Option<String>) -> (Option<String>, String) {
@@ -160,21 +199,36 @@ fn parse_node_def(s: &str) -> Option<(String, String, NodeShape)> {
         }
     }
 
+    if let Some((id, text)) = extract_bracketed_double(s, "{{", "}}") {
+        if is_valid_id(&id) {
+            return Some((id, text, NodeShape::Hexagon));
+        }
+    }
+
     if let Some((id, text)) = extract_bracketed(s, '{', '}') {
         if is_valid_id(&id) {
             return Some((id, text, NodeShape::Diamond));
         }
     }
 
-    if let Some((id, text)) = extract_bracketed_double(s, "{{", "}}") {
+    if let Some((id, text)) = extract_bracketed_double(s, "((", "))") {
         if is_valid_id(&id) {
-            return Some((id, text, NodeShape::Diamond));
+            return Some((id, text, NodeShape::Circle));
         }
     }
 
     if let Some((id, text)) = extract_bracketed(s, '(', ')') {
         if is_valid_id(&id) {
+            if text.contains('[') || text.starts_with('(') {
+                return None;
+            }
             return Some((id, text, NodeShape::Stadium));
+        }
+    }
+
+    if let Some((id, text)) = extract_cylinder(s) {
+        if is_valid_id(&id) {
+            return Some((id, text, NodeShape::Cylinder));
         }
     }
 
@@ -182,6 +236,18 @@ fn parse_node_def(s: &str) -> Option<(String, String, NodeShape)> {
         return Some((s.to_string(), s.to_string(), NodeShape::Rect));
     }
 
+    None
+}
+
+fn extract_cylinder(s: &str) -> Option<(String, String)> {
+    let s = s.trim();
+    if let Some(pos) = s.find("[(") {
+        if s.ends_with(")]") {
+            let id = &s[..pos];
+            let inner = &s[pos + 2..s.len() - 2];
+            return Some((id.to_string(), inner.to_string()));
+        }
+    }
     None
 }
 
@@ -263,5 +329,43 @@ mod tests {
         let parsed = parse(&output).unwrap();
         assert_eq!(parsed.nodes.len(), 3);
         assert_eq!(parsed.edges.len(), 2);
+    }
+
+    #[test]
+    fn test_cylinder_syntax() {
+        assert_eq!(extract_cylinder("B[(DB)]"), Some(("B".into(), "DB".into())));
+        assert_eq!(extract_cylinder("X[(text)]"), Some(("X".into(), "text".into())));
+    }
+
+    #[test]
+    fn test_new_shapes() {
+        let source = "graph LR\n    A{{Hex}} --> B[(DB)]\n    B -.-> C((Circle))\n    C ==> D[End]";
+        let diagram = parse(source).unwrap();
+        for (i, n) in diagram.nodes.iter().enumerate() {
+            eprintln!("node[{i}]: id={:?} text={:?} shape={:?}", n.id, n.text, n.shape);
+        }
+        assert_eq!(diagram.nodes.len(), 4);
+        assert_eq!(diagram.edges.len(), 3);
+        assert_eq!(diagram.nodes[0].shape, NodeShape::Hexagon);
+        assert_eq!(diagram.nodes[1].shape, NodeShape::Cylinder, "B should be Cylinder, got {:?}", diagram.nodes[1].shape);
+        assert_eq!(diagram.nodes[2].shape, NodeShape::Circle);
+        assert_eq!(diagram.nodes[3].shape, NodeShape::Rect);
+        assert_eq!(diagram.edges[0].style, EdgeStyle::Arrow);
+        assert_eq!(diagram.edges[1].style, EdgeStyle::Dashed);
+        assert_eq!(diagram.edges[2].style, EdgeStyle::Thick);
+    }
+
+    #[test]
+    fn test_new_shapes_roundtrip() {
+        let source = "graph LR\n    A{{Hex}} --> B[(DB)]\n    B -.-> C((Circle))\n    C ==> D[End]";
+        let diagram = parse(source).unwrap();
+        let output = diagram.to_mermaid();
+        let parsed = parse(&output).unwrap();
+        assert_eq!(parsed.nodes.len(), 4);
+        assert_eq!(parsed.edges.len(), 3);
+        assert_eq!(parsed.nodes[0].shape, NodeShape::Hexagon);
+        assert_eq!(parsed.nodes[1].shape, NodeShape::Cylinder);
+        assert_eq!(parsed.edges[1].style, EdgeStyle::Dashed);
+        assert_eq!(parsed.edges[2].style, EdgeStyle::Thick);
     }
 }

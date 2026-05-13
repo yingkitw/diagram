@@ -21,7 +21,7 @@ struct NodeParams {
     id: String,
     #[schemars(description = "Node display text")]
     text: String,
-    #[schemars(description = "Node shape: rect, diamond, or stadium")]
+    #[schemars(description = "Node shape: rect, diamond, stadium, hexagon, cylinder, circle")]
     shape: Option<String>,
 }
 
@@ -33,8 +33,16 @@ struct NodeUpdateParams {
     id: String,
     #[schemars(description = "New display text")]
     text: Option<String>,
-    #[schemars(description = "New shape: rect, diamond, or stadium")]
+    #[schemars(description = "New shape: rect, diamond, stadium, hexagon, cylinder, circle")]
     shape: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct MermaidSourceParams {
+    #[schemars(description = "Path to the mermaid .mmd file")]
+    path: String,
+    #[schemars(description = "Raw mermaid source code to write")]
+    source: String,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -47,6 +55,8 @@ struct EdgeParams {
     to: String,
     #[schemars(description = "Edge label")]
     label: Option<String>,
+    #[schemars(description = "Edge style: arrow, dashed, or thick")]
+    style: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -120,12 +130,15 @@ impl DiagramServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let mut shapes = vec![0usize; 3];
+        let mut shapes = vec![0usize; 6];
         for n in &diagram.nodes {
             shapes[match n.shape {
                 dg::NodeShape::Rect => 0,
                 dg::NodeShape::Diamond => 1,
                 dg::NodeShape::Stadium => 2,
+                dg::NodeShape::Hexagon => 3,
+                dg::NodeShape::Cylinder => 4,
+                dg::NodeShape::Circle => 5,
             }] += 1;
         }
         let summary = serde_json::json!({
@@ -137,6 +150,9 @@ impl DiagramServer {
                 "rect": shapes[0],
                 "diamond": shapes[1],
                 "stadium": shapes[2],
+                "hexagon": shapes[3],
+                "cylinder": shapes[4],
+                "circle": shapes[5],
             },
         });
         CallToolResult::success(vec![Content::text(summary.to_string())])
@@ -160,7 +176,7 @@ impl DiagramServer {
                 Some(s) => s,
                 None => {
                     return CallToolResult::error(vec![Content::text(format!(
-                        "Invalid shape '{}'. Use: rect, diamond, or stadium",
+                        "Invalid shape '{}'. Use: rect, diamond, stadium, hexagon, cylinder, or circle",
                         s
                     ))])
                 }
@@ -200,7 +216,7 @@ impl DiagramServer {
                 Some(s) => Some(s),
                 None => {
                     return CallToolResult::error(vec![Content::text(format!(
-                        "Invalid shape '{}'. Use: rect, diamond, or stadium",
+                        "Invalid shape '{}'. Use: rect, diamond, stadium, hexagon, cylinder, or circle",
                         s
                     ))])
                 }
@@ -217,12 +233,27 @@ impl DiagramServer {
 
     #[tool(description = "Add an edge between two nodes")]
     async fn add_edge(&self, Parameters(params): Parameters<EdgeParams>) -> CallToolResult {
+        let style = match &params.style {
+            Some(s) => match s.to_lowercase().as_str() {
+                "arrow" => dg::EdgeStyle::Arrow,
+                "dashed" => dg::EdgeStyle::Dashed,
+                "thick" => dg::EdgeStyle::Thick,
+                _ => {
+                    return CallToolResult::error(vec![Content::text(format!(
+                        "Invalid edge style '{}'. Use: arrow, dashed, or thick",
+                        s
+                    ))])
+                }
+            },
+            None => dg::EdgeStyle::Arrow,
+        };
         modify_file(&params.path, |diagram| {
             diagram
                 .add_edge(dg::Edge {
                     from: params.from.clone(),
                     to: params.to.clone(),
                     label: params.label.clone().unwrap_or_default(),
+                    style,
                 })
                 .map_err(|e| CallToolResult::error(vec![Content::text(e)]))?;
             Ok(
@@ -255,6 +286,22 @@ impl DiagramServer {
             Err(e) => return e,
         };
         CallToolResult::success(vec![Content::text(diagram.to_mermaid())])
+    }
+
+    #[tool(description = "Write raw mermaid source code directly to a file")]
+    async fn set_mermaid(
+        &self,
+        Parameters(params): Parameters<MermaidSourceParams>,
+    ) -> CallToolResult {
+        match std::fs::write(&params.path, &params.source) {
+            Ok(_) => CallToolResult::success(vec![Content::text(
+                serde_json::json!({"status": "ok", "path": params.path}).to_string(),
+            )]),
+            Err(e) => CallToolResult::error(vec![Content::text(format!(
+                "Failed to write file '{}': {}",
+                params.path, e
+            ))]),
+        }
     }
 
     #[tool(description = "List all nodes in the diagram")]
@@ -293,6 +340,11 @@ impl DiagramServer {
                     "from": e.from,
                     "to": e.to,
                     "label": e.label,
+                    "style": match e.style {
+                        dg::EdgeStyle::Arrow => "arrow",
+                        dg::EdgeStyle::Dashed => "dashed",
+                        dg::EdgeStyle::Thick => "thick",
+                    },
                 })
             })
             .collect();

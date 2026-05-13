@@ -7,12 +7,17 @@
 - [x] Graph layout algorithm (layered)
 - [x] SVG renderer
 - [x] CLI subcommands (parse, info, render, add/remove/update node/edge)
-- [x] MCP server with rmcp (10 tools)
+- [x] MCP server with rmcp (12 tools)
 - [x] Roundtrip: parse → manipulate → to_mermaid → parse
-- [ ] Support more Mermaid graph types (subgraph, style, classDef)
-- [ ] Support more node shapes (hexagon, cylinder, circle)
-- [ ] Support more edge types (dotted, thick)
-- [ ] `set_mermaid` MCP tool (write raw mermaid source)
+- [x] Node shapes: hexagon (`{{}}`), cylinder (`[()]`), circle (`(())`)
+- [x] Edge types: dashed (`-.->`), thick (`==>`)
+- [x] `set_mermaid` MCP tool (write raw mermaid source)
+- [ ] Subgraph support (`subgraph ... end`)
+- [ ] Styling: `style` and `classDef` directives
+- [ ] CLI: add `get-mermaid`, `set-mermaid`, `list-nodes`, `list-edges` subcommands
+- [ ] CLI `add-edge`: add `--style` parameter (arrow/dashed/thick)
+- [ ] CLI `update-node --shape` help: update to list all 6 shapes
+- [ ] Quoted node IDs with special characters
 
 ## Medium-term
 
@@ -21,6 +26,10 @@
 - [ ] Watch mode: auto-reload on file change
 - [ ] Better error messages with file:line info
 - [ ] Integration tests with sample diagrams
+- [ ] CLI unit tests
+- [ ] CI setup (GitHub Actions: test + build)
+- [ ] Populate `examples/` directory with sample `.mmd` files
+- [ ] Tagged releases + `cargo publish`
 
 ## Longer-term
 
@@ -30,3 +39,5 @@
 - [ ] Support for Gantt charts
 - [ ] VSCode extension via MCP
 - [ ] Plugin system for custom shape renderers
+- [ ] Interactive SVG output (links, tooltips, click events)
+- [ ] Multi-diagram file support (multiple graphs per file)

@@ -1,4 +1,4 @@
-use crate::diagram::{Diagram, NodeShape};
+use crate::diagram::{Diagram, EdgeStyle, NodeShape};
 use std::collections::{HashMap, HashSet, VecDeque};
 use serde::Serialize;
 
@@ -18,6 +18,7 @@ pub struct LayoutEdge {
     pub from: String,
     pub to: String,
     pub label: String,
+    pub style: EdgeStyle,
     pub points: Vec<(f64, f64)>,
 }
 
@@ -153,6 +154,7 @@ pub fn layout(diagram: &Diagram) -> Layout {
                 from: e.from.clone(),
                 to: e.to.clone(),
                 label: e.label.clone(),
+                style: e.style,
                 points: vec![start, (mid_x, mid_y), end],
             });
         }

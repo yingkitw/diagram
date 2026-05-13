@@ -6,6 +6,9 @@ pub enum NodeShape {
     Rect,
     Diamond,
     Stadium,
+    Hexagon,
+    Cylinder,
+    Circle,
 }
 
 impl NodeShape {
@@ -14,6 +17,9 @@ impl NodeShape {
             "rect" | "rectangle" => Some(Self::Rect),
             "diamond" => Some(Self::Diamond),
             "stadium" => Some(Self::Stadium),
+            "hexagon" => Some(Self::Hexagon),
+            "cylinder" => Some(Self::Cylinder),
+            "circle" => Some(Self::Circle),
             _ => None,
         }
     }
@@ -25,7 +31,33 @@ impl fmt::Display for NodeShape {
             Self::Rect => write!(f, "rect"),
             Self::Diamond => write!(f, "diamond"),
             Self::Stadium => write!(f, "stadium"),
+            Self::Hexagon => write!(f, "hexagon"),
+            Self::Cylinder => write!(f, "cylinder"),
+            Self::Circle => write!(f, "circle"),
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum EdgeStyle {
+    Arrow,
+    Dashed,
+    Thick,
+}
+
+impl EdgeStyle {
+    pub fn arrow_str(&self) -> &str {
+        match self {
+            Self::Arrow => "-->",
+            Self::Dashed => "-.->",
+            Self::Thick => "==>",
+        }
+    }
+}
+
+impl Default for EdgeStyle {
+    fn default() -> Self {
+        Self::Arrow
     }
 }
 
@@ -41,6 +73,8 @@ pub struct Edge {
     pub from: String,
     pub to: String,
     pub label: String,
+    #[serde(default)]
+    pub style: EdgeStyle,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,13 +158,17 @@ impl Diagram {
                 NodeShape::Rect => out.push_str(&format!("    {}[{}]\n", n.id, t)),
                 NodeShape::Diamond => out.push_str(&format!("    {}{{{}}}\n", n.id, t)),
                 NodeShape::Stadium => out.push_str(&format!("    {}({})\n", n.id, t)),
+                NodeShape::Hexagon => out.push_str(&format!("    {}{{{{{}}}}}\n", n.id, t)),
+                NodeShape::Cylinder => out.push_str(&format!("    {}[({})]\n", n.id, t)),
+                NodeShape::Circle => out.push_str(&format!("    {}(({}))\n", n.id, t)),
             }
         }
         for e in &self.edges {
+            let arrow = e.style.arrow_str();
             if e.label.is_empty() {
-                out.push_str(&format!("    {} --> {}\n", e.from, e.to));
+                out.push_str(&format!("    {} {} {}\n", e.from, arrow, e.to));
             } else {
-                out.push_str(&format!("    {} -->|{}| {}\n", e.from, e.label, e.to));
+                out.push_str(&format!("    {} {}|{}| {}\n", e.from, arrow, e.label, e.to));
             }
         }
         out.trim().to_string()

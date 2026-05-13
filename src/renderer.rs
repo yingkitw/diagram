@@ -1,5 +1,5 @@
 use crate::layout::{Layout, LayoutNode};
-use crate::diagram::NodeShape;
+use crate::diagram::{EdgeStyle, NodeShape};
 
 pub fn render_svg(layout: &Layout) -> String {
     let mut svg = String::new();
@@ -11,9 +11,19 @@ pub fn render_svg(layout: &Layout) -> String {
     ));
 
     svg.push_str(
-        r##"<defs><marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">"##
+        r##"<defs><marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">"##,
     );
-    svg.push_str(r##"<polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/></marker></defs>"##);
+    svg.push_str(r##"<polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/></marker>"##);
+
+    svg.push_str(
+        r##"<marker id="arrow-thick" markerWidth="12" markerHeight="8" refX="10" refY="4" orient="auto">"##,
+    );
+    svg.push_str(r##"<polygon points="0 0, 12 4, 0 8" fill="#e2e8f0"/></marker>"##);
+
+    svg.push_str(
+        r##"<marker id="arrow-dashed" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">"##,
+    );
+    svg.push_str(r##"<polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8"/></marker></defs>"##);
     svg.push_str(r##"<rect width="100%" height="100%" fill="#1a1a2e"/>"##);
 
     for e in &layout.edges {
@@ -32,8 +42,18 @@ pub fn render_svg(layout: &Layout) -> String {
         };
 
         if !d.is_empty() {
+            let (stroke_color, stroke_width, dash_array, marker) = match e.style {
+                EdgeStyle::Arrow => ("#64748b", 2, "", "url(#arrow)"),
+                EdgeStyle::Dashed => ("#94a3b8", 2, "6,4", "url(#arrow-dashed)"),
+                EdgeStyle::Thick => ("#e2e8f0", 4, "", "url(#arrow-thick)"),
+            };
             svg.push_str(&format!(
-                r##"<path d="{d}" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>"##,
+                r##"<path d="{d}" fill="none" stroke="{stroke_color}" stroke-width="{stroke_width}" {dash} marker-end="{marker}"/>"##,
+                dash = if dash_array.is_empty() {
+                    String::new()
+                } else {
+                    format!(r##"stroke-dasharray="{}""##, dash_array)
+                },
             ));
         }
 
@@ -81,6 +101,39 @@ fn render_node(svg: &mut String, n: &LayoutNode) {
             svg.push_str(&format!(
                 r##"<rect x="{:.1}" y="{:.1}" width="{:.1}" height="{:.1}" rx="{r:.1}" ry="{r:.1}" fill="#334155" stroke="#475569" stroke-width="2"/>"##,
                 -n.width / 2.0, -n.height / 2.0, n.width, n.height,
+            ));
+        }
+        NodeShape::Hexagon => {
+            let hw = n.width / 2.0;
+            let hh = n.height / 2.0;
+            let inset = n.width * 0.25;
+            let il = hw - inset;
+            let t = -hh;
+            let b = hh;
+            let nil = -il;
+            let nhw = -hw;
+            svg.push_str(&format!(
+                r##"<polygon points="{il:.1},{t:.1} {hw:.1},0 {il:.1},{b:.1} {nil:.1},{b:.1} {nhw:.1},0 {nil:.1},{t:.1}" fill="#334155" stroke="#475569" stroke-width="2"/>"##,
+            ));
+        }
+        NodeShape::Cylinder => {
+            let hw = n.width / 2.0;
+            let hh = n.height / 2.0;
+            let elly = -hh + 6.0;
+            let b = hh;
+            let nhw = -hw;
+            let er = 6.0;
+            svg.push_str(&format!(
+                r##"<path d="M{nhw:.1},{elly:.1} L{nhw:.1},{b:.1} A{hw:.1},{er:.1} 0 0,0 {hw:.1},{b:.1} L{hw:.1},{elly:.1} A{hw:.1},{er:.1} 0 0,1 {nhw:.1},{elly:.1} Z" fill="#334155" stroke="#475569" stroke-width="2"/>"##,
+            ));
+            svg.push_str(&format!(
+                r##"<ellipse cx="0" cy="{elly:.1}" rx="{hw:.1}" ry="{er:.1}" fill="#1e293b" stroke="#475569" stroke-width="2"/>"##,
+            ));
+        }
+        NodeShape::Circle => {
+            let r = n.width.min(n.height) / 2.0 - 2.0;
+            svg.push_str(&format!(
+                r##"<circle cx="0" cy="0" r="{r:.1}" fill="#334155" stroke="#475569" stroke-width="2"/>"##,
             ));
         }
     }

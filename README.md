@@ -1,4 +1,4 @@
-# diagram-rs
+# diagram
 
 A Rust CLI and MCP (Model Context Protocol) server for manipulating Mermaid diagrams. Parse, inspect, modify, and render `.mmd` files from the command line or through any MCP-compatible AI assistant.
 
