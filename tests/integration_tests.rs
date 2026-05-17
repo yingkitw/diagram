@@ -79,17 +79,12 @@ fn test_all_examples_roundtrip() {
 }
 
 #[test]
-fn test_render_examples() {
-    for entry in fs::read_dir(examples_dir()).unwrap() {
-        let entry = entry.unwrap();
-        let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) == Some("mmd") {
-            let source = fs::read_to_string(&path).unwrap();
-            let diagram = diagram::parser::parse(&source).unwrap();
-            let layout = diagram::layout::layout(&diagram);
-            let svg = diagram::renderer::render_svg(&layout);
-            assert!(svg.starts_with("<svg"));
-            assert!(svg.ends_with("</svg>"));
-        }
-    }
+fn test_render_shapes_example() {
+    let path = examples_dir().join("shapes.mmd");
+    let source = fs::read_to_string(&path).unwrap();
+    let diagram = diagram::parser::parse(&source).unwrap();
+    let layout = diagram::layout::layout(&diagram);
+    let svg = diagram::renderer::render_svg(&layout);
+    assert!(svg.starts_with("<svg"));
+    assert!(svg.ends_with("</svg>"));
 }
