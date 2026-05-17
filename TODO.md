@@ -21,14 +21,14 @@
 
 ## Medium-term
 
+- [x] Better error messages with file:line info
+- [x] Integration tests with sample diagrams
+- [x] Populate `examples/` directory with sample `.mmd` files
+- [x] CI setup (GitHub Actions: test + build)
 - [ ] MCP resource support (diagram files as resources)
 - [ ] MCP prompts for common diagram operations
 - [ ] Watch mode: auto-reload on file change
-- [ ] Better error messages with file:line info
-- [ ] Integration tests with sample diagrams
 - [ ] CLI unit tests
-- [ ] CI setup (GitHub Actions: test + build)
-- [ ] Populate `examples/` directory with sample `.mmd` files
 - [ ] Tagged releases + `cargo publish`
 
 ## Longer-term

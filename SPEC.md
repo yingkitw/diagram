@@ -24,6 +24,16 @@
 - **Styling**: `style NodeId fill:#f9f`, `classDef name fill:#bbf`, `class A,B name`
 - **Comments**: `%% line comment`
 
+## Error Handling
+
+The parser returns structured errors with optional line numbers:
+```rust
+pub struct ParseError {
+    pub message: String,
+    pub line: Option<usize>,
+}
+```
+
 ## CLI Interface
 
 ```
@@ -109,6 +119,20 @@ struct ClassApply {
     class_name: String,
 }
 ```
+
+## Library Interface
+
+The crate exposes a public library API via `src/lib.rs`:
+```rust
+pub mod cli;
+pub mod diagram;
+pub mod layout;
+pub mod mcp;
+pub mod parser;
+pub mod renderer;
+```
+
+All core modules are importable for programmatic use or integration tests.
 
 ## Rendering
 
