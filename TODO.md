@@ -12,12 +12,12 @@
 - [x] Node shapes: hexagon (`{{}}`), cylinder (`[()]`), circle (`(())`)
 - [x] Edge types: dashed (`-.->`), thick (`==>`)
 - [x] `set_mermaid` MCP tool (write raw mermaid source)
-- [ ] Subgraph support (`subgraph ... end`)
-- [ ] Styling: `style` and `classDef` directives
-- [ ] CLI: add `get-mermaid`, `set-mermaid`, `list-nodes`, `list-edges` subcommands
-- [ ] CLI `add-edge`: add `--style` parameter (arrow/dashed/thick)
-- [ ] CLI `update-node --shape` help: update to list all 6 shapes
-- [ ] Quoted node IDs with special characters
+- [x] Subgraph support (`subgraph ... end`)
+- [x] Styling: `style` and `classDef` directives
+- [x] CLI: add `get-mermaid`, `set-mermaid`, `list-nodes`, `list-edges` subcommands
+- [x] CLI `add-edge`: add `--style` parameter (arrow/dashed/thick)
+- [x] CLI `update-node --shape` help: update to list all 6 shapes
+- [x] Quoted node IDs with special characters
 
 ## Medium-term
 

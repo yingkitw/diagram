@@ -28,7 +28,7 @@ pub enum Cli {
         path: String,
         id: String,
         text: String,
-        #[arg(long, help = "Node shape: rect, diamond, or stadium")]
+        #[arg(long, help = "Node shape: rect, diamond, stadium, hexagon, cylinder, circle")]
         shape: Option<String>,
     },
 
@@ -44,7 +44,7 @@ pub enum Cli {
         id: String,
         #[arg(long, help = "New display text")]
         text: Option<String>,
-        #[arg(long, help = "New shape: rect, diamond, or stadium")]
+        #[arg(long, help = "New shape: rect, diamond, stadium, hexagon, cylinder, circle")]
         shape: Option<String>,
     },
 
@@ -55,6 +55,8 @@ pub enum Cli {
         to: String,
         #[arg(long, help = "Edge label")]
         label: Option<String>,
+        #[arg(long, help = "Edge style: arrow, dashed, thick")]
+        style: Option<String>,
     },
 
     #[command(about = "Remove an edge between two nodes")]
@@ -62,6 +64,28 @@ pub enum Cli {
         path: String,
         from: String,
         to: String,
+    },
+
+    #[command(about = "Get the raw mermaid source code from a diagram file")]
+    GetMermaid {
+        path: String,
+    },
+
+    #[command(about = "Write raw mermaid source code directly to a file")]
+    SetMermaid {
+        path: String,
+        #[arg(help = "Raw mermaid source code to write")]
+        source: String,
+    },
+
+    #[command(about = "List all nodes in the diagram")]
+    ListNodes {
+        path: String,
+    },
+
+    #[command(about = "List all edges in the diagram")]
+    ListEdges {
+        path: String,
     },
 }
 
@@ -75,8 +99,12 @@ impl Cli {
             Self::AddNode { path, id, text, shape } => cmd_add_node(path, id, text, shape.as_deref()),
             Self::RemoveNode { path, id } => cmd_remove_node(path, id),
             Self::UpdateNode { path, id, text, shape } => cmd_update_node(path, id, text.as_deref(), shape.as_deref()),
-            Self::AddEdge { path, from, to, label } => cmd_add_edge(path, from, to, label.as_deref()),
+            Self::AddEdge { path, from, to, label, style } => cmd_add_edge(path, from, to, label.as_deref(), style.as_deref()),
             Self::RemoveEdge { path, from, to } => cmd_remove_edge(path, from, to),
+            Self::GetMermaid { path } => cmd_get_mermaid(path),
+            Self::SetMermaid { path, source } => cmd_set_mermaid(path, source),
+            Self::ListNodes { path } => cmd_list_nodes(path),
+            Self::ListEdges { path } => cmd_list_edges(path),
         }
     }
 }
@@ -85,7 +113,7 @@ fn read_diagram(path: &str) -> anyhow::Result<dg::Diagram> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| anyhow::anyhow!("Failed to read '{}': {}", path, e))?;
     parser::parse(&content)
-        .map_err(|e| anyhow::anyhow!("Parse error: {}", e))
+        .map_err(|e| anyhow::anyhow!("{}", e))
 }
 
 fn write_diagram(path: &str, diagram: &dg::Diagram) -> anyhow::Result<()> {
@@ -153,7 +181,7 @@ fn cmd_add_node(path: &str, id: &str, text: &str, shape: Option<&str>) -> anyhow
     let mut diagram = read_diagram(path)?;
     let shape = match shape {
         Some(s) => dg::NodeShape::from_str(s)
-            .ok_or_else(|| anyhow::anyhow!("Invalid shape '{s}'. Use: rect, diamond, stadium"))?,
+            .ok_or_else(|| anyhow::anyhow!("Invalid shape '{s}'. Use: rect, diamond, stadium, hexagon, cylinder, circle"))?,
         None => dg::NodeShape::Rect,
     };
     diagram
@@ -186,7 +214,7 @@ fn cmd_update_node(
     let shape = match shape {
         Some(s) => Some(
             dg::NodeShape::from_str(s)
-                .ok_or_else(|| anyhow::anyhow!("Invalid shape '{s}'. Use: rect, diamond, stadium"))?,
+                .ok_or_else(|| anyhow::anyhow!("Invalid shape '{s}'. Use: rect, diamond, stadium, hexagon, cylinder, circle"))?,
         ),
         None => None,
     };
@@ -203,14 +231,24 @@ fn cmd_add_edge(
     from: &str,
     to: &str,
     label: Option<&str>,
+    style: Option<&str>,
 ) -> anyhow::Result<()> {
     let mut diagram = read_diagram(path)?;
+    let style = match style {
+        Some(s) => match s.to_lowercase().as_str() {
+            "arrow" => dg::EdgeStyle::Arrow,
+            "dashed" => dg::EdgeStyle::Dashed,
+            "thick" => dg::EdgeStyle::Thick,
+            _ => return Err(anyhow::anyhow!("Invalid edge style '{s}'. Use: arrow, dashed, thick")),
+        },
+        None => dg::EdgeStyle::Arrow,
+    };
     diagram
         .add_edge(dg::Edge {
             from: from.to_string(),
             to: to.to_string(),
             label: label.unwrap_or("").to_string(),
-            style: dg::EdgeStyle::Arrow,
+            style,
         })
         .map_err(|e| anyhow::anyhow!("{}", e))?;
     write_diagram(path, &diagram)?;
@@ -225,5 +263,35 @@ fn cmd_remove_edge(path: &str, from: &str, to: &str) -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("{}", e))?;
     write_diagram(path, &diagram)?;
     println!("Removed edge '{from} -> {to}'");
+    Ok(())
+}
+
+fn cmd_get_mermaid(path: &str) -> anyhow::Result<()> {
+    let diagram = read_diagram(path)?;
+    println!("{}", diagram.to_mermaid());
+    Ok(())
+}
+
+fn cmd_set_mermaid(path: &str, source: &str) -> anyhow::Result<()> {
+    std::fs::write(path, source)
+        .map_err(|e| anyhow::anyhow!("Failed to write '{}': {}", path, e))?;
+    println!("Wrote mermaid source to '{path}'");
+    Ok(())
+}
+
+fn cmd_list_nodes(path: &str) -> anyhow::Result<()> {
+    let diagram = read_diagram(path)?;
+    for n in &diagram.nodes {
+        println!("{} [{}] {}", n.id, n.shape, n.text);
+    }
+    Ok(())
+}
+
+fn cmd_list_edges(path: &str) -> anyhow::Result<()> {
+    let diagram = read_diagram(path)?;
+    for e in &diagram.edges {
+        let label = if e.label.is_empty() { String::new() } else { format!(" |{}|", e.label) };
+        println!("{} {} {}{}", e.from, e.style.arrow_str(), e.to, label);
+    }
     Ok(())
 }

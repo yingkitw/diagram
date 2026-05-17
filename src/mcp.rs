@@ -76,7 +76,7 @@ fn read_file(path: &str) -> Result<dg::Diagram, CallToolResult> {
             path, e
         ))]))?;
     parser::parse(&content).map_err(|e| {
-        CallToolResult::error(vec![Content::text(format!("Parse error: {}", e))])
+        CallToolResult::error(vec![Content::text(e.to_string())])
     })
 }
 

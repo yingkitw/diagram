@@ -78,10 +78,46 @@ pub struct Edge {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Subgraph {
+    pub id: String,
+    pub nodes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NodeStyle {
+    pub node_id: String,
+    pub properties: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClassDef {
+    pub name: String,
+    pub properties: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClassApply {
+    pub node_ids: Vec<String>,
+    pub class_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Diagram {
     pub rankdir: String,
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
+    pub subgraphs: Vec<Subgraph>,
+    pub styles: Vec<NodeStyle>,
+    pub class_defs: Vec<ClassDef>,
+    pub class_applies: Vec<ClassApply>,
+}
+
+pub fn format_id(id: &str) -> String {
+    if id.chars().all(|c| c.is_alphanumeric() || c == '_') && !id.is_empty() {
+        id.to_string()
+    } else {
+        format!("\"{}\"", id.replace('"', "\\\""))
+    }
 }
 
 impl Diagram {
@@ -90,6 +126,10 @@ impl Diagram {
             rankdir: rankdir.to_string(),
             nodes: Vec::new(),
             edges: Vec::new(),
+            subgraphs: Vec::new(),
+            styles: Vec::new(),
+            class_defs: Vec::new(),
+            class_applies: Vec::new(),
         }
     }
 
@@ -153,23 +193,43 @@ impl Diagram {
     pub fn to_mermaid(&self) -> String {
         let mut out = format!("graph {}\n", self.rankdir);
         for n in &self.nodes {
+            let id = format_id(&n.id);
             let t = &n.text;
             match n.shape {
-                NodeShape::Rect => out.push_str(&format!("    {}[{}]\n", n.id, t)),
-                NodeShape::Diamond => out.push_str(&format!("    {}{{{}}}\n", n.id, t)),
-                NodeShape::Stadium => out.push_str(&format!("    {}({})\n", n.id, t)),
-                NodeShape::Hexagon => out.push_str(&format!("    {}{{{{{}}}}}\n", n.id, t)),
-                NodeShape::Cylinder => out.push_str(&format!("    {}[({})]\n", n.id, t)),
-                NodeShape::Circle => out.push_str(&format!("    {}(({}))\n", n.id, t)),
+                NodeShape::Rect => out.push_str(&format!("    {}[{}]\n", id, t)),
+                NodeShape::Diamond => out.push_str(&format!("    {}{{{}}}\n", id, t)),
+                NodeShape::Stadium => out.push_str(&format!("    {}({})\n", id, t)),
+                NodeShape::Hexagon => out.push_str(&format!("    {}{{{{{}}}}}\n", id, t)),
+                NodeShape::Cylinder => out.push_str(&format!("    {}[({})]\n", id, t)),
+                NodeShape::Circle => out.push_str(&format!("    {}(({}))\n", id, t)),
             }
         }
         for e in &self.edges {
             let arrow = e.style.arrow_str();
+            let from = format_id(&e.from);
+            let to = format_id(&e.to);
             if e.label.is_empty() {
-                out.push_str(&format!("    {} {} {}\n", e.from, arrow, e.to));
+                out.push_str(&format!("    {} {} {}\n", from, arrow, to));
             } else {
-                out.push_str(&format!("    {} {}|{}| {}\n", e.from, arrow, e.label, e.to));
+                out.push_str(&format!("    {} {}|{}| {}\n", from, arrow, e.label, to));
             }
+        }
+        for sg in &self.subgraphs {
+            out.push_str(&format!("    subgraph {}\n", format_id(&sg.id)));
+            for nid in &sg.nodes {
+                out.push_str(&format!("        {}\n", format_id(nid)));
+            }
+            out.push_str("    end\n");
+        }
+        for s in &self.styles {
+            out.push_str(&format!("    style {} {}\n", format_id(&s.node_id), s.properties));
+        }
+        for cd in &self.class_defs {
+            out.push_str(&format!("    classDef {} {}\n", cd.name, cd.properties));
+        }
+        for ca in &self.class_applies {
+            let ids: Vec<String> = ca.node_ids.iter().map(|id| format_id(id)).collect();
+            out.push_str(&format!("    class {} {}\n", ids.join(","), ca.class_name));
         }
         out.trim().to_string()
     }

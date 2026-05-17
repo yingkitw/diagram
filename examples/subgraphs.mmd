@@ -1,0 +1,13 @@
+graph TB
+    subgraph Frontend
+        A[Login Page] --> B[Dashboard]
+    end
+
+    subgraph Backend
+        C[API Gateway] --> D[Auth Service]
+        C --> E[Data Service]
+    end
+
+    B --> C
+    D --> F[(Database)]
+    E --> F

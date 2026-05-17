@@ -12,18 +12,17 @@
 - **Nodes**:
   - `A[text]` — rectangle (default)
   - `A{text}` — diamond
-  - `A{{text}}` — diamond (alt syntax)
+  - `A{{text}}` — hexagon
   - `A(text)` — stadium / rounded
+  - `A((text))` — circle
+  - `A[(text)]` — cylinder
   - `A` — bare rectangle (id as text)
+  - `"my id"[text]` — quoted ID with special characters
 - **Edges**: `A --> B` (directed), `A -->|label| B` (labeled)
+- **Edge types**: `-.->` (dashed), `==>` (thick)
+- **Subgraphs**: `subgraph Name ... end`
+- **Styling**: `style NodeId fill:#f9f`, `classDef name fill:#bbf`, `class A,B name`
 - **Comments**: `%% line comment`
-
-### Not yet supported
-
-- Subgraphs
-- Styling (style, classDef)
-- Edge types (`===`, `-.->`)
-- Multi-character node IDs (only `[A-Za-z0-9_]`)
 
 ## CLI Interface
 
@@ -40,6 +39,10 @@ Commands:
   update-node  Update node text/shape
   add-edge     Add an edge
   remove-edge  Remove an edge
+  get-mermaid  Get raw mermaid source
+  set-mermaid  Write raw mermaid source
+  list-nodes   List all nodes
+  list-edges   List all edges
 ```
 
 ## MCP Tools
@@ -67,18 +70,43 @@ struct Diagram {
     rankdir: String,  // "TB", "LR", "RL", "BT"
     nodes: Vec<Node>,
     edges: Vec<Edge>,
+    subgraphs: Vec<Subgraph>,
+    styles: Vec<NodeStyle>,
+    class_defs: Vec<ClassDef>,
+    class_applies: Vec<ClassApply>,
 }
 
 struct Node {
     id: String,
     text: String,
-    shape: NodeShape,  // Rect | Diamond | Stadium
+    shape: NodeShape,  // Rect | Diamond | Stadium | Hexagon | Cylinder | Circle
 }
 
 struct Edge {
     from: String,
     to: String,
     label: String,
+    style: EdgeStyle,  // Arrow | Dashed | Thick
+}
+
+struct Subgraph {
+    id: String,
+    nodes: Vec<String>,
+}
+
+struct NodeStyle {
+    node_id: String,
+    properties: String,
+}
+
+struct ClassDef {
+    name: String,
+    properties: String,
+}
+
+struct ClassApply {
+    node_ids: Vec<String>,
+    class_name: String,
 }
 ```
 

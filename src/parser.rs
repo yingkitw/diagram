@@ -1,19 +1,39 @@
-use crate::diagram::{Diagram, Edge, EdgeStyle, Node, NodeShape};
+use crate::diagram::{ClassApply, ClassDef, Diagram, Edge, EdgeStyle, Node, NodeShape, NodeStyle, Subgraph};
 use std::collections::HashSet;
+use std::fmt;
 
-pub fn parse(source: &str) -> Result<Diagram, String> {
-    let lines: Vec<&str> = source
-        .lines()
-        .map(|l| l.trim())
-        .filter(|l| !l.is_empty() && !l.starts_with("%%") && !l.starts_with("---"))
+#[derive(Debug, Clone)]
+pub struct ParseError {
+    pub message: String,
+    pub line: Option<usize>,
+}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.line {
+            Some(l) => write!(f, "line {}: {}", l, self.message),
+            None => write!(f, "{}", self.message),
+        }
+    }
+}
+
+impl std::error::Error for ParseError {}
+
+pub fn parse(source: &str) -> Result<Diagram, ParseError> {
+    let raw_lines: Vec<&str> = source.lines().collect();
+    let lines: Vec<(usize, &str)> = raw_lines
+        .iter()
+        .enumerate()
+        .map(|(i, l)| (i + 1, l.trim()))
+        .filter(|(_, l)| !l.is_empty() && !l.starts_with("%%") && !l.starts_with("---"))
         .collect();
 
     if lines.is_empty() {
         return Ok(Diagram::new("TB"));
     }
 
-    let rankdir = if lines[0].starts_with("graph ") {
-        parse_rankdir(lines[0])
+    let rankdir = if lines[0].1.starts_with("graph ") {
+        parse_rankdir(lines[0].1)
     } else {
         "TB".to_string()
     };
@@ -21,56 +41,176 @@ pub fn parse(source: &str) -> Result<Diagram, String> {
     let mut nodes: Vec<Node> = Vec::new();
     let mut edges: Vec<Edge> = Vec::new();
     let mut seen_ids: HashSet<String> = HashSet::new();
+    let mut subgraphs: Vec<Subgraph> = Vec::new();
+    let mut styles: Vec<NodeStyle> = Vec::new();
+    let mut class_defs: Vec<ClassDef> = Vec::new();
+    let mut class_applies: Vec<ClassApply> = Vec::new();
 
-    for line in &lines {
-        if line.starts_with("graph ") {
+    let mut i = 0;
+    while i < lines.len() {
+        let (_line_num, line_text) = lines[i];
+        if line_text.starts_with("graph ") {
+            i += 1;
             continue;
         }
 
-        let pl = split_arrows(line);
-        let mut prev_id: Option<String> = None;
-        let mut pending_label: Option<String> = None;
-
-        for (i, segment) in pl.segments.iter().enumerate() {
-            let segment = segment.trim();
-            if segment.is_empty() {
-                continue;
+        if line_text.starts_with("subgraph ") {
+            let sg_id = line_text[9..].trim().to_string();
+            let mut sg_nodes: Vec<String> = Vec::new();
+            i += 1;
+            while i < lines.len() && lines[i].1 != "end" {
+                let (_, inner) = lines[i];
+                if inner.starts_with("subgraph ") {
+                    // Nested subgraphs not supported; skip
+                    i += 1;
+                    while i < lines.len() && lines[i].1 != "end" {
+                        i += 1;
+                    }
+                    if i < lines.len() {
+                        i += 1;
+                    }
+                    continue;
+                }
+                collect_line(
+                    inner,
+                    &mut nodes,
+                    &mut edges,
+                    &mut seen_ids,
+                    &mut sg_nodes,
+                    &mut styles,
+                    &mut class_defs,
+                    &mut class_applies,
+                );
+                i += 1;
             }
-
-            let (label, rest) = extract_label(segment, pending_label.take());
-            if let Some(l) = label {
-                pending_label = Some(l);
+            if i < lines.len() && lines[i].1 == "end" {
+                i += 1;
             }
+            subgraphs.push(Subgraph {
+                id: sg_id,
+                nodes: sg_nodes,
+            });
+            continue;
+        }
 
-            if rest.is_empty() {
-                continue;
+        collect_line(
+            line_text,
+            &mut nodes,
+            &mut edges,
+            &mut seen_ids,
+            &mut Vec::new(),
+            &mut styles,
+            &mut class_defs,
+            &mut class_applies,
+        );
+        i += 1;
+    }
+
+    Ok(Diagram {
+        rankdir,
+        nodes,
+        edges,
+        subgraphs,
+        styles,
+        class_defs,
+        class_applies,
+    })
+}
+
+fn collect_line(
+    line: &str,
+    nodes: &mut Vec<Node>,
+    edges: &mut Vec<Edge>,
+    seen_ids: &mut HashSet<String>,
+    sg_nodes: &mut Vec<String>,
+    styles: &mut Vec<NodeStyle>,
+    class_defs: &mut Vec<ClassDef>,
+    class_applies: &mut Vec<ClassApply>,
+) {
+    if line.starts_with("style ") {
+        if let Some((node_id, props)) = parse_style_line(line) {
+            styles.push(NodeStyle { node_id, properties: props });
+        }
+        return;
+    }
+    if line.starts_with("classDef ") {
+        if let Some((name, props)) = parse_classdef_line(line) {
+            class_defs.push(ClassDef { name, properties: props });
+        }
+        return;
+    }
+    if line.starts_with("class ") {
+        if let Some(ca) = parse_class_line(line) {
+            class_applies.push(ca);
+        }
+        return;
+    }
+
+    let pl = split_arrows(line);
+    let mut prev_id: Option<String> = None;
+    let mut pending_label: Option<String> = None;
+
+    for (seg_idx, segment) in pl.segments.iter().enumerate() {
+        let segment = segment.trim();
+        if segment.is_empty() {
+            continue;
+        }
+
+        let (label, rest) = extract_label(segment, pending_label.take());
+        if let Some(l) = label {
+            pending_label = Some(l);
+        }
+
+        if rest.is_empty() {
+            continue;
+        }
+
+        if seg_idx > 0 {
+            let (id, text, shape) = match parse_node_def(&rest) {
+                Some(t) => t,
+                None => continue,
+            };
+            ensure_node(&id, &text, shape, nodes, seen_ids);
+            if !sg_nodes.contains(&id) {
+                sg_nodes.push(id.clone());
             }
-
-            if i > 0 {
-                let (id, text, shape) = match parse_node_def(&rest) {
-                    Some(t) => t,
-                    None => continue,
-                };
-                ensure_node(&id, &text, shape, &mut nodes, &mut seen_ids);
-                let lbl = pending_label.take().unwrap_or_default();
-                let style = pl
-                    .arrow_types
-                    .get(i - 1)
-                    .copied()
-                    .unwrap_or(EdgeStyle::Arrow);
+            let lbl = pending_label.take().unwrap_or_default();
+            let style = pl
+                .arrow_types
+                .get(seg_idx - 1)
+                .copied()
+                .unwrap_or(EdgeStyle::Arrow);
+            if let Some(ref prev) = prev_id {
+                edges.push(Edge {
+                    from: prev.clone(),
+                    to: id.clone(),
+                    label: lbl,
+                    style,
+                });
+            }
+            prev_id = Some(id);
+        } else {
+            if let Some((id, text, shape)) = parse_node_def(&rest) {
+                ensure_node(&id, &text, shape, nodes, seen_ids);
+                if !sg_nodes.contains(&id) {
+                    sg_nodes.push(id.clone());
+                }
                 if let Some(ref prev) = prev_id {
                     edges.push(Edge {
                         from: prev.clone(),
-                        to: id.clone(),
-                        label: lbl,
-                        style,
+                        to: id.to_string(),
+                        label: String::new(),
+                        style: EdgeStyle::Arrow,
                     });
                 }
                 prev_id = Some(id);
             } else {
                 for p in split_nodes(&rest) {
                     if let Some((id, text, shape)) = parse_node_def(&p) {
-                        ensure_node(&id, &text, shape, &mut nodes, &mut seen_ids);
+                        ensure_node(&id, &text, shape, nodes, seen_ids);
+                        if !sg_nodes.contains(&id) {
+                            sg_nodes.push(id.clone());
+                        }
                         if let Some(ref prev) = prev_id {
                             edges.push(Edge {
                                 from: prev.clone(),
@@ -85,12 +225,38 @@ pub fn parse(source: &str) -> Result<Diagram, String> {
             }
         }
     }
+}
 
-    Ok(Diagram {
-        rankdir,
-        nodes,
-        edges,
-    })
+fn parse_style_line(line: &str) -> Option<(String, String)> {
+    let rest = line[6..].trim();
+    let mut parts = rest.splitn(2, |c: char| c.is_whitespace());
+    let node_id = parts.next()?.trim().to_string();
+    let props = parts.next()?.trim().to_string();
+    Some((unquote_id(&node_id), props))
+}
+
+fn parse_classdef_line(line: &str) -> Option<(String, String)> {
+    let rest = line[9..].trim();
+    let mut parts = rest.splitn(2, |c: char| c.is_whitespace());
+    let name = parts.next()?.trim().to_string();
+    let props = parts.next()?.trim().to_string();
+    Some((name, props))
+}
+
+fn parse_class_line(line: &str) -> Option<ClassApply> {
+    let rest = line[6..].trim();
+    let mut parts = rest.rsplitn(2, |c: char| c.is_whitespace());
+    let class_name = parts.next()?.trim().to_string();
+    let ids_str = parts.next()?.trim();
+    let node_ids: Vec<String> = ids_str
+        .split(',')
+        .map(|s| unquote_id(s.trim()))
+        .filter(|s| !s.is_empty())
+        .collect();
+    if node_ids.is_empty() {
+        return None;
+    }
+    Some(ClassApply { node_ids, class_name })
 }
 
 struct ParsedLine {
@@ -157,10 +323,29 @@ fn split_arrows(s: &str) -> ParsedLine {
 }
 
 fn split_nodes(s: &str) -> Vec<String> {
-    s.split(|c: char| c == ',' || c.is_whitespace())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
+    let mut result = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+
+    for c in s.chars() {
+        if c == '"' {
+            in_quotes = !in_quotes;
+            current.push(c);
+        } else if (c == ',' || c.is_whitespace()) && !in_quotes {
+            let trimmed = current.trim();
+            if !trimmed.is_empty() {
+                result.push(trimmed.to_string());
+            }
+            current.clear();
+        } else {
+            current.push(c);
+        }
+    }
+    let trimmed = current.trim();
+    if !trimmed.is_empty() {
+        result.push(trimmed.to_string());
+    }
+    result
 }
 
 fn extract_label(s: &str, existing: Option<String>) -> (Option<String>, String) {
@@ -193,27 +378,33 @@ fn parse_node_def(s: &str) -> Option<(String, String, NodeShape)> {
         return None;
     }
 
+    if let Some((id, text)) = extract_cylinder(s) {
+        if is_valid_id(&id) {
+            return Some((unquote_id(&id), text, NodeShape::Cylinder));
+        }
+    }
+
     if let Some((id, text)) = extract_bracketed(s, '[', ']') {
         if is_valid_id(&id) {
-            return Some((id, text, NodeShape::Rect));
+            return Some((unquote_id(&id), text, NodeShape::Rect));
         }
     }
 
     if let Some((id, text)) = extract_bracketed_double(s, "{{", "}}") {
         if is_valid_id(&id) {
-            return Some((id, text, NodeShape::Hexagon));
+            return Some((unquote_id(&id), text, NodeShape::Hexagon));
         }
     }
 
     if let Some((id, text)) = extract_bracketed(s, '{', '}') {
         if is_valid_id(&id) {
-            return Some((id, text, NodeShape::Diamond));
+            return Some((unquote_id(&id), text, NodeShape::Diamond));
         }
     }
 
     if let Some((id, text)) = extract_bracketed_double(s, "((", "))") {
         if is_valid_id(&id) {
-            return Some((id, text, NodeShape::Circle));
+            return Some((unquote_id(&id), text, NodeShape::Circle));
         }
     }
 
@@ -222,18 +413,13 @@ fn parse_node_def(s: &str) -> Option<(String, String, NodeShape)> {
             if text.contains('[') || text.starts_with('(') {
                 return None;
             }
-            return Some((id, text, NodeShape::Stadium));
-        }
-    }
-
-    if let Some((id, text)) = extract_cylinder(s) {
-        if is_valid_id(&id) {
-            return Some((id, text, NodeShape::Cylinder));
+            return Some((unquote_id(&id), text, NodeShape::Stadium));
         }
     }
 
     if is_valid_id(s) {
-        return Some((s.to_string(), s.to_string(), NodeShape::Rect));
+        let id = unquote_id(s);
+        return Some((id.clone(), id, NodeShape::Rect));
     }
 
     None
@@ -252,7 +438,21 @@ fn extract_cylinder(s: &str) -> Option<(String, String)> {
 }
 
 fn is_valid_id(s: &str) -> bool {
-    !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || c == '_')
+    if s.is_empty() {
+        return false;
+    }
+    if s.len() >= 2 && s.starts_with('"') && s.ends_with('"') {
+        return true;
+    }
+    s.chars().all(|c| c.is_alphanumeric() || c == '_')
+}
+
+fn unquote_id(s: &str) -> String {
+    if s.len() >= 2 && s.starts_with('"') && s.ends_with('"') {
+        s[1..s.len() - 1].to_string()
+    } else {
+        s.to_string()
+    }
 }
 
 fn extract_bracketed(s: &str, open: char, close: char) -> Option<(String, String)> {
@@ -341,9 +541,6 @@ mod tests {
     fn test_new_shapes() {
         let source = "graph LR\n    A{{Hex}} --> B[(DB)]\n    B -.-> C((Circle))\n    C ==> D[End]";
         let diagram = parse(source).unwrap();
-        for (i, n) in diagram.nodes.iter().enumerate() {
-            eprintln!("node[{i}]: id={:?} text={:?} shape={:?}", n.id, n.text, n.shape);
-        }
         assert_eq!(diagram.nodes.len(), 4);
         assert_eq!(diagram.edges.len(), 3);
         assert_eq!(diagram.nodes[0].shape, NodeShape::Hexagon);
@@ -367,5 +564,84 @@ mod tests {
         assert_eq!(parsed.nodes[1].shape, NodeShape::Cylinder);
         assert_eq!(parsed.edges[1].style, EdgeStyle::Dashed);
         assert_eq!(parsed.edges[2].style, EdgeStyle::Thick);
+    }
+
+    #[test]
+    fn test_quoted_ids() {
+        let source = r#"graph TD
+    "my node"[Start] --> "other node"[End]"#;
+        let diagram = parse(source).unwrap();
+        assert_eq!(diagram.nodes.len(), 2);
+        assert_eq!(diagram.nodes[0].id, "my node");
+        assert_eq!(diagram.nodes[1].id, "other node");
+        assert_eq!(diagram.edges.len(), 1);
+        assert_eq!(diagram.edges[0].from, "my node");
+        assert_eq!(diagram.edges[0].to, "other node");
+    }
+
+    #[test]
+    fn test_quoted_ids_with_diamond() {
+        let source = "graph TD\n    \"user login\"[User Login] --> \"auth service\"{Auth Service}\n    \"auth service\" --> \"token issued\"[Token Issued]\n    \"auth service\" --> \"login failed\"[Login Failed]";
+        let diagram = parse(source).unwrap();
+        assert_eq!(diagram.nodes.len(), 4, "expected 4 nodes, got {}", diagram.nodes.len());
+        assert!(diagram.nodes.iter().any(|n| n.id == "user login"));
+    }
+
+    #[test]
+    fn test_quoted_ids_roundtrip() {
+        let source = r#"graph TD
+    "my node"[Start] --> "other node"[End]"#;
+        let diagram = parse(source).unwrap();
+        let output = diagram.to_mermaid();
+        let parsed = parse(&output).unwrap();
+        assert_eq!(parsed.nodes[0].id, "my node");
+        assert_eq!(parsed.nodes[1].id, "other node");
+    }
+
+    #[test]
+    fn test_subgraphs() {
+        let source = "graph TD\n    subgraph One\n        A --> B\n    end\n    B --> C";
+        let diagram = parse(source).unwrap();
+        assert_eq!(diagram.nodes.len(), 3);
+        assert_eq!(diagram.edges.len(), 2);
+        assert_eq!(diagram.subgraphs.len(), 1);
+        assert_eq!(diagram.subgraphs[0].id, "One");
+        assert!(diagram.subgraphs[0].nodes.contains(&"A".to_string()));
+        assert!(diagram.subgraphs[0].nodes.contains(&"B".to_string()));
+    }
+
+    #[test]
+    fn test_subgraph_roundtrip() {
+        let source = "graph TD\n    subgraph One\n        A --> B\n    end\n    B --> C";
+        let diagram = parse(source).unwrap();
+        let output = diagram.to_mermaid();
+        let parsed = parse(&output).unwrap();
+        assert_eq!(parsed.subgraphs.len(), 1);
+        assert_eq!(parsed.subgraphs[0].id, "One");
+    }
+
+    #[test]
+    fn test_styles_and_classdef() {
+        let source = "graph TD\n    A[Start] --> B[End]\n    style A fill:#f9f\n    classDef myClass fill:#bbf\n    class A,B myClass";
+        let diagram = parse(source).unwrap();
+        assert_eq!(diagram.styles.len(), 1);
+        assert_eq!(diagram.styles[0].node_id, "A");
+        assert_eq!(diagram.styles[0].properties, "fill:#f9f");
+        assert_eq!(diagram.class_defs.len(), 1);
+        assert_eq!(diagram.class_defs[0].name, "myClass");
+        assert_eq!(diagram.class_defs[0].properties, "fill:#bbf");
+        assert_eq!(diagram.class_applies.len(), 1);
+        assert_eq!(diagram.class_applies[0].node_ids, vec!["A", "B"]);
+        assert_eq!(diagram.class_applies[0].class_name, "myClass");
+    }
+
+    #[test]
+    fn test_styles_roundtrip() {
+        let source = "graph TD\n    A[Start] --> B[End]\n    style A fill:#f9f\n    classDef myClass fill:#bbf\n    class A,B myClass";
+        let diagram = parse(source).unwrap();
+        let output = diagram.to_mermaid();
+        assert!(output.contains("style A fill:#f9f"));
+        assert!(output.contains("classDef myClass fill:#bbf"));
+        assert!(output.contains("class A,B myClass"));
     }
 }

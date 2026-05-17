@@ -1,0 +1,13 @@
+graph TD
+    A[Start] --> B{Decision}
+    B -->|Yes| C[Proceed]
+    B -->|No| D[Cancel]
+
+    style A fill:#bbf,stroke:#333
+    style C fill:#9f9,stroke:#333
+    style D fill:#f99,stroke:#333
+
+    classDef success fill:#9f9,stroke:#333
+    classDef failure fill:#f99,stroke:#333
+    class C success
+    class D failure

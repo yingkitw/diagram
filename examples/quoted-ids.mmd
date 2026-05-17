@@ -1,0 +1,4 @@
+graph TD
+    "user login"[User Login] --> "auth service"{Auth Service}
+    "auth service" --> "token issued"[Token Issued]
+    "auth service" --> "login failed"[Login Failed]
