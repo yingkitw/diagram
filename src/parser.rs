@@ -1,4 +1,4 @@
-use crate::diagram::{ClassApply, ClassDef, Diagram, Edge, EdgeStyle, Node, NodeShape, NodeStyle, Subgraph};
+use crate::diagram::{ClassApply, ClassDef, Diagram, Edge, EdgeStyle, LinkStyle, Node, NodeShape, NodeStyle, Subgraph};
 use std::collections::HashSet;
 use std::fmt;
 
@@ -45,6 +45,7 @@ pub fn parse(source: &str) -> Result<Diagram, ParseError> {
     let mut styles: Vec<NodeStyle> = Vec::new();
     let mut class_defs: Vec<ClassDef> = Vec::new();
     let mut class_applies: Vec<ClassApply> = Vec::new();
+    let mut link_styles: Vec<LinkStyle> = Vec::new();
 
     let mut i = 0;
     while i < lines.len() {
@@ -80,6 +81,7 @@ pub fn parse(source: &str) -> Result<Diagram, ParseError> {
                     &mut styles,
                     &mut class_defs,
                     &mut class_applies,
+                    &mut link_styles,
                 );
                 i += 1;
             }
@@ -102,6 +104,7 @@ pub fn parse(source: &str) -> Result<Diagram, ParseError> {
             &mut styles,
             &mut class_defs,
             &mut class_applies,
+            &mut link_styles,
         );
         i += 1;
     }
@@ -114,6 +117,7 @@ pub fn parse(source: &str) -> Result<Diagram, ParseError> {
         styles,
         class_defs,
         class_applies,
+        link_styles,
     })
 }
 
@@ -126,6 +130,7 @@ fn collect_line(
     styles: &mut Vec<NodeStyle>,
     class_defs: &mut Vec<ClassDef>,
     class_applies: &mut Vec<ClassApply>,
+    link_styles: &mut Vec<LinkStyle>,
 ) {
     if line.starts_with("style ") {
         if let Some((node_id, props)) = parse_style_line(line) {
@@ -142,6 +147,12 @@ fn collect_line(
     if line.starts_with("class ") {
         if let Some(ca) = parse_class_line(line) {
             class_applies.push(ca);
+        }
+        return;
+    }
+    if line.starts_with("linkStyle ") {
+        if let Some(ls) = parse_link_style_line(line) {
+            link_styles.push(ls);
         }
         return;
     }
@@ -257,6 +268,15 @@ fn parse_class_line(line: &str) -> Option<ClassApply> {
         return None;
     }
     Some(ClassApply { node_ids, class_name })
+}
+
+fn parse_link_style_line(line: &str) -> Option<LinkStyle> {
+    let rest = line[10..].trim();
+    let mut parts = rest.splitn(2, |c: char| c.is_whitespace());
+    let index_str = parts.next()?.trim();
+    let index = index_str.parse::<usize>().ok()?;
+    let props = parts.next()?.trim().to_string();
+    Some(LinkStyle { index, properties: props })
 }
 
 struct ParsedLine {

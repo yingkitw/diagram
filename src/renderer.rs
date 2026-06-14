@@ -1,4 +1,4 @@
-use crate::layout::{Layout, LayoutNode};
+use crate::layout::{Layout, LayoutNode, LayoutSubgraph};
 use crate::diagram::{EdgeStyle, NodeShape};
 
 pub fn render_svg(layout: &Layout) -> String {
@@ -26,27 +26,39 @@ pub fn render_svg(layout: &Layout) -> String {
     svg.push_str(r##"<polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8"/></marker></defs>"##);
     svg.push_str(r##"<rect width="100%" height="100%" fill="#1a1a2e"/>"##);
 
+    for sg in &layout.subgraphs {
+        render_subgraph(&mut svg, sg);
+    }
+
     for e in &layout.edges {
         let d = if e.points.len() >= 2 {
-            let mut path = String::from("M");
-            for (i, (x, y)) in e.points.iter().enumerate() {
-                if i == 0 {
-                    path.push_str(&format!(" {:.1},{:.1}", x, y));
-                } else {
-                    path.push_str(&format!(" L {:.1},{:.1}", x, y));
-                }
-            }
-            path
+            let start = e.points[0];
+            let end = e.points[e.points.len() - 1];
+            let dx = end.0 - start.0;
+            let dy = end.1 - start.1;
+            // Control points extend 40% along the dominant direction for a smooth curve
+            let (c1, c2) = if dx.abs() > dy.abs() {
+                ((start.0 + dx * 0.4, start.1), (end.0 - dx * 0.4, end.1))
+            } else {
+                ((start.0, start.1 + dy * 0.4), (end.0, end.1 - dy * 0.4))
+            };
+            format!(
+                "M {:.1},{:.1} C {:.1},{:.1} {:.1},{:.1} {:.1},{:.1}",
+                start.0, start.1, c1.0, c1.1, c2.0, c2.1, end.0, end.1
+            )
         } else {
             String::new()
         };
 
         if !d.is_empty() {
-            let (stroke_color, stroke_width, dash_array, marker) = match e.style {
+            let (default_color, default_width, dash_array, marker) = match e.style {
                 EdgeStyle::Arrow => ("#64748b", 2, "", "url(#arrow)"),
                 EdgeStyle::Dashed => ("#94a3b8", 2, "6,4", "url(#arrow-dashed)"),
                 EdgeStyle::Thick => ("#e2e8f0", 4, "", "url(#arrow-thick)"),
             };
+            let stroke_color = e.stroke_color.as_deref().unwrap_or(default_color);
+            let default_width_str = default_width.to_string();
+            let stroke_width = e.stroke_width.as_deref().unwrap_or(&default_width_str);
             svg.push_str(&format!(
                 r##"<path d="{d}" fill="none" stroke="{stroke_color}" stroke-width="{stroke_width}" {dash} marker-end="{marker}"/>"##,
                 dash = if dash_array.is_empty() {
@@ -76,6 +88,9 @@ pub fn render_svg(layout: &Layout) -> String {
 }
 
 fn render_node(svg: &mut String, n: &LayoutNode) {
+    let fill = n.fill.as_deref().unwrap_or("#334155");
+    let stroke = n.stroke.as_deref().unwrap_or("#475569");
+
     svg.push_str(&format!(
         r##"<g transform="translate({:.1},{:.1})">"##,
         n.x, n.y,
@@ -84,7 +99,7 @@ fn render_node(svg: &mut String, n: &LayoutNode) {
     match n.shape {
         NodeShape::Rect => {
             svg.push_str(&format!(
-                r##"<rect x="{:.1}" y="{:.1}" width="{:.1}" height="{:.1}" rx="6" fill="#334155" stroke="#475569" stroke-width="2"/>"##,
+                r##"<rect x="{:.1}" y="{:.1}" width="{:.1}" height="{:.1}" rx="6" fill="{fill}" stroke="{stroke}" stroke-width="2"/>"##,
                 -n.width / 2.0, -n.height / 2.0, n.width, n.height,
             ));
         }
@@ -92,14 +107,14 @@ fn render_node(svg: &mut String, n: &LayoutNode) {
             let hw = n.width / 2.0;
             let hh = n.height / 2.0;
             svg.push_str(&format!(
-                r##"<polygon points="{:.1},0 0,{:.1} {:.1},0 0,{:.1}" fill="#334155" stroke="#475569" stroke-width="2"/>"##,
+                r##"<polygon points="{:.1},0 0,{:.1} {:.1},0 0,{:.1}" fill="{fill}" stroke="{stroke}" stroke-width="2"/>"##,
                 hw, -hh, -hw, hh,
             ));
         }
         NodeShape::Stadium => {
             let r = n.height.min(n.width) / 4.0;
             svg.push_str(&format!(
-                r##"<rect x="{:.1}" y="{:.1}" width="{:.1}" height="{:.1}" rx="{r:.1}" ry="{r:.1}" fill="#334155" stroke="#475569" stroke-width="2"/>"##,
+                r##"<rect x="{:.1}" y="{:.1}" width="{:.1}" height="{:.1}" rx="{r:.1}" ry="{r:.1}" fill="{fill}" stroke="{stroke}" stroke-width="2"/>"##,
                 -n.width / 2.0, -n.height / 2.0, n.width, n.height,
             ));
         }
@@ -113,7 +128,7 @@ fn render_node(svg: &mut String, n: &LayoutNode) {
             let nil = -il;
             let nhw = -hw;
             svg.push_str(&format!(
-                r##"<polygon points="{il:.1},{t:.1} {hw:.1},0 {il:.1},{b:.1} {nil:.1},{b:.1} {nhw:.1},0 {nil:.1},{t:.1}" fill="#334155" stroke="#475569" stroke-width="2"/>"##,
+                r##"<polygon points="{il:.1},{t:.1} {hw:.1},0 {il:.1},{b:.1} {nil:.1},{b:.1} {nhw:.1},0 {nil:.1},{t:.1}" fill="{fill}" stroke="{stroke}" stroke-width="2"/>"##,
             ));
         }
         NodeShape::Cylinder => {
@@ -124,16 +139,16 @@ fn render_node(svg: &mut String, n: &LayoutNode) {
             let nhw = -hw;
             let er = 6.0;
             svg.push_str(&format!(
-                r##"<path d="M{nhw:.1},{elly:.1} L{nhw:.1},{b:.1} A{hw:.1},{er:.1} 0 0,0 {hw:.1},{b:.1} L{hw:.1},{elly:.1} A{hw:.1},{er:.1} 0 0,1 {nhw:.1},{elly:.1} Z" fill="#334155" stroke="#475569" stroke-width="2"/>"##,
+                r##"<path d="M{nhw:.1},{elly:.1} L{nhw:.1},{b:.1} A{hw:.1},{er:.1} 0 0,0 {hw:.1},{b:.1} L{hw:.1},{elly:.1} A{hw:.1},{er:.1} 0 0,1 {nhw:.1},{elly:.1} Z" fill="{fill}" stroke="{stroke}" stroke-width="2"/>"##,
             ));
             svg.push_str(&format!(
-                r##"<ellipse cx="0" cy="{elly:.1}" rx="{hw:.1}" ry="{er:.1}" fill="#1e293b" stroke="#475569" stroke-width="2"/>"##,
+                r##"<ellipse cx="0" cy="{elly:.1}" rx="{hw:.1}" ry="{er:.1}" fill="{fill}" stroke="{stroke}" stroke-width="2"/>"##,
             ));
         }
         NodeShape::Circle => {
             let r = n.width.min(n.height) / 2.0 - 2.0;
             svg.push_str(&format!(
-                r##"<circle cx="0" cy="0" r="{r:.1}" fill="#334155" stroke="#475569" stroke-width="2"/>"##,
+                r##"<circle cx="0" cy="0" r="{r:.1}" fill="{fill}" stroke="{stroke}" stroke-width="2"/>"##,
             ));
         }
     }
@@ -150,6 +165,20 @@ fn render_node(svg: &mut String, n: &LayoutNode) {
     ));
 
     svg.push_str("</g>");
+}
+
+fn render_subgraph(svg: &mut String, sg: &LayoutSubgraph) {
+    let rx = sg.x - sg.width / 2.0;
+    let ry = sg.y - sg.height / 2.0;
+    svg.push_str(&format!(
+        r##"<rect x="{:.1}" y="{:.1}" width="{:.1}" height="{:.1}" rx="8" fill="#1e293b" fill-opacity="0.6" stroke="#334155" stroke-width="2" stroke-dasharray="4,4"/>"##,
+        rx, ry, sg.width, sg.height,
+    ));
+    svg.push_str(&format!(
+        r##"<text x="{:.1}" y="{:.1}" text-anchor="middle" dominant-baseline="central" fill="#94a3b8" font-size="11" font-style="italic">{}</text>"##,
+        sg.x, ry + 12.0,
+        escape_xml(&sg.label),
+    ));
 }
 
 fn escape_xml(s: &str) -> String {

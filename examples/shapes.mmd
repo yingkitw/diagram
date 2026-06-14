@@ -1,6 +1,12 @@
 graph LR
-    A[Rectangle] --> B{Rounded}
-    B --> C{{Hexagon}}
-    C --> D[(Database)]
-    D --> E((Circle))
-    E --> F(Stadium)
+    A[Rectangle]
+    B{Rounded}
+    C{{Hexagon}}
+    D[(Database)]
+    E((Circle))
+    F(Stadium)
+    A -.-> B
+    B --> C
+    C --> D
+    D --> E
+    E --> F

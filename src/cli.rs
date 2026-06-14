@@ -18,6 +18,8 @@ pub enum Cli {
         path: String,
         #[arg(long, help = "Output SVG file path (prints to stdout if not set)")]
         output: Option<String>,
+        #[arg(long, help = "Watch file for changes and re-render automatically")]
+        watch: bool,
     },
 
     #[command(about = "Start MCP server (stdio transport)")]
@@ -66,6 +68,30 @@ pub enum Cli {
         to: String,
     },
 
+    #[command(about = "Update an edge label and/or style")]
+    UpdateEdge {
+        path: String,
+        from: String,
+        to: String,
+        #[arg(long, help = "New edge label")]
+        label: Option<String>,
+        #[arg(long, help = "New edge style: arrow, dashed, thick")]
+        style: Option<String>,
+    },
+
+    #[command(about = "Get a single node by ID")]
+    GetNode {
+        path: String,
+        id: String,
+    },
+
+    #[command(about = "Get a single edge by from/to IDs")]
+    GetEdge {
+        path: String,
+        from: String,
+        to: String,
+    },
+
     #[command(about = "Get the raw mermaid source code from a diagram file")]
     GetMermaid {
         path: String,
@@ -87,6 +113,11 @@ pub enum Cli {
     ListEdges {
         path: String,
     },
+
+    #[command(about = "Validate diagram (orphaned nodes, dangling edges, cycles)")]
+    Validate {
+        path: String,
+    },
 }
 
 impl Cli {
@@ -94,17 +125,27 @@ impl Cli {
         match self {
             Self::Parse { path } => cmd_parse(path),
             Self::Info { path } => cmd_info(path),
-            Self::Render { path, output } => cmd_render(path, output.as_deref()),
+            Self::Render { path, output, watch } => {
+                if *watch {
+                    cmd_render_watch(path, output.as_deref()).await
+                } else {
+                    cmd_render(path, output.as_deref())
+                }
+            }
             Self::Mcp => cmd_mcp().await,
             Self::AddNode { path, id, text, shape } => cmd_add_node(path, id, text, shape.as_deref()),
             Self::RemoveNode { path, id } => cmd_remove_node(path, id),
             Self::UpdateNode { path, id, text, shape } => cmd_update_node(path, id, text.as_deref(), shape.as_deref()),
             Self::AddEdge { path, from, to, label, style } => cmd_add_edge(path, from, to, label.as_deref(), style.as_deref()),
             Self::RemoveEdge { path, from, to } => cmd_remove_edge(path, from, to),
+            Self::UpdateEdge { path, from, to, label, style } => cmd_update_edge(path, from, to, label.as_deref(), style.as_deref()),
+            Self::GetNode { path, id } => cmd_get_node(path, id),
+            Self::GetEdge { path, from, to } => cmd_get_edge(path, from, to),
             Self::GetMermaid { path } => cmd_get_mermaid(path),
             Self::SetMermaid { path, source } => cmd_set_mermaid(path, source),
             Self::ListNodes { path } => cmd_list_nodes(path),
             Self::ListEdges { path } => cmd_list_edges(path),
+            Self::Validate { path } => cmd_validate(path),
         }
     }
 }
@@ -163,6 +204,39 @@ fn cmd_render(path: &str, output: Option<&str>) -> anyhow::Result<()> {
         Some(out_path) => std::fs::write(out_path, &svg)?,
         None => println!("{svg}"),
     }
+    Ok(())
+}
+
+async fn cmd_render_watch(path: &str, output: Option<&str>) -> anyhow::Result<()> {
+    cmd_render(path, output)?;
+    eprintln!("Watching {path} for changes... (press Ctrl+C to stop)");
+
+    let path = path.to_string();
+    let output = output.map(|s| s.to_string());
+
+    tokio::task::spawn_blocking(move || {
+        use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
+        use std::sync::mpsc::channel;
+
+        let (tx, rx) = channel();
+        let mut watcher = RecommendedWatcher::new(tx, Config::default())?;
+        watcher.watch(std::path::Path::new(&path), RecursiveMode::NonRecursive)?;
+
+        for event in rx {
+            match event {
+                Ok(_) => {
+                    if let Err(e) = cmd_render(&path, output.as_deref()) {
+                        eprintln!("Render error: {e}");
+                    } else {
+                        eprintln!("Re-rendered {path}");
+                    }
+                }
+                Err(e) => eprintln!("Watch error: {e}"),
+            }
+        }
+        Ok::<(), anyhow::Error>(())
+    }).await??;
+
     Ok(())
 }
 
@@ -292,6 +366,66 @@ fn cmd_list_edges(path: &str) -> anyhow::Result<()> {
     for e in &diagram.edges {
         let label = if e.label.is_empty() { String::new() } else { format!(" |{}|", e.label) };
         println!("{} {} {}{}", e.from, e.style.arrow_str(), e.to, label);
+    }
+    Ok(())
+}
+
+fn cmd_validate(path: &str) -> anyhow::Result<()> {
+    let diagram = read_diagram(path)?;
+    let issues = diagram.validate();
+    if issues.is_empty() {
+        println!("Valid: no issues found");
+    } else {
+        println!("Found {} issue(s):", issues.len());
+        for issue in &issues {
+            println!("  - {issue}");
+        }
+    }
+    Ok(())
+}
+
+fn cmd_update_edge(
+    path: &str,
+    from: &str,
+    to: &str,
+    label: Option<&str>,
+    style: Option<&str>,
+) -> anyhow::Result<()> {
+    let mut diagram = read_diagram(path)?;
+    let style = match style {
+        Some(s) => match s.to_lowercase().as_str() {
+            "arrow" => Some(dg::EdgeStyle::Arrow),
+            "dashed" => Some(dg::EdgeStyle::Dashed),
+            "thick" => Some(dg::EdgeStyle::Thick),
+            _ => return Err(anyhow::anyhow!("Invalid edge style '{s}'. Use: arrow, dashed, thick")),
+        },
+        None => None,
+    };
+    diagram
+        .update_edge(from, to, label, style)
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    write_diagram(path, &diagram)?;
+    println!("Updated edge '{from} -> {to}'");
+    Ok(())
+}
+
+fn cmd_get_node(path: &str, id: &str) -> anyhow::Result<()> {
+    let diagram = read_diagram(path)?;
+    match diagram.get_node(id) {
+        Some(n) => println!("{} [{}] {}", n.id, n.shape, n.text),
+        None => println!("Node '{}' not found", id),
+    }
+    Ok(())
+}
+
+fn cmd_get_edge(path: &str, from: &str, to: &str) -> anyhow::Result<()> {
+    let diagram = read_diagram(path)?;
+    match diagram.edges.iter().find(|e| e.from == from && e.to == to) {
+        Some(e) => {
+            let label = if e.label.is_empty() { String::new() } else { format!(" |{}|", e.label) };
+            println!("{} {} {}{}", e.from, e.style.arrow_str(), e.to, label);
+        }
+        None => println!("Edge '{from} -> {to}' not found"),
     }
     Ok(())
 }

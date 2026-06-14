@@ -11,6 +11,8 @@ pub struct LayoutNode {
     pub height: f64,
     pub label: String,
     pub shape: NodeShape,
+    pub fill: Option<String>,
+    pub stroke: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -20,12 +22,25 @@ pub struct LayoutEdge {
     pub label: String,
     pub style: EdgeStyle,
     pub points: Vec<(f64, f64)>,
+    pub stroke_color: Option<String>,
+    pub stroke_width: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LayoutSubgraph {
+    pub id: String,
+    pub label: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Layout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
+    pub subgraphs: Vec<LayoutSubgraph>,
     pub width: f64,
     pub height: f64,
 }
@@ -69,11 +84,15 @@ pub fn layout(diagram: &Diagram) -> Layout {
         }
     }
 
+    let layer_bound = all_ids.len();
     while let Some(node) = queue.pop_front() {
         let layer = layers[node];
         if let Some(children) = outgoing.get(node) {
             for child in children.clone() {
                 let new_layer = layer + 1;
+                if new_layer >= layer_bound {
+                    continue;
+                }
                 let updated = match layers.get(child) {
                     Some(&existing) if existing >= new_layer => false,
                     _ => true,
@@ -96,12 +115,49 @@ pub fn layout(diagram: &Diagram) -> Layout {
         layer_nodes.entry(layer).or_default().push(id);
     }
 
+    // Initial sort: nodes with more incoming edges first (good starting point)
     for layer in layer_nodes.values_mut() {
         layer.sort_by(|a, b| {
             let a_in = incoming.get(a).map(|v| v.len()).unwrap_or(0);
             let b_in = incoming.get(b).map(|v| v.len()).unwrap_or(0);
             b_in.cmp(&a_in)
         });
+    }
+
+    // Barycenter crossing-reduction: single forward pass
+    let mut node_pos: HashMap<&str, (usize, usize)> = HashMap::new();
+    for (layer, nodes) in &layer_nodes {
+        for (idx, &id) in nodes.iter().enumerate() {
+            node_pos.insert(id, (*layer, idx));
+        }
+    }
+
+    for layer_idx in 1..=max_layer {
+        if let Some(nodes) = layer_nodes.get_mut(&layer_idx) {
+            let mut barycenters: Vec<(&str, f64)> = Vec::new();
+            for &id in &*nodes {
+                let mut sum = 0.0;
+                let mut count = 0;
+                if let Some(neighbors) = incoming.get(id) {
+                    for &neighbor in neighbors {
+                        if let Some(&(_, prev_idx)) = node_pos.get(neighbor) {
+                            sum += prev_idx as f64;
+                            count += 1;
+                        }
+                    }
+                }
+                let bc = if count > 0 { sum / count as f64 } else { f64::MAX };
+                barycenters.push((id, bc));
+            }
+            barycenters.sort_by(|a, b| {
+                a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)
+            });
+            *nodes = barycenters.into_iter().map(|(id, _)| id).collect();
+
+            for (idx, &id) in nodes.iter().enumerate() {
+                node_pos.insert(id, (layer_idx, idx));
+            }
+        }
     }
 
     let mut layout_nodes: Vec<LayoutNode> = Vec::new();
@@ -128,6 +184,7 @@ pub fn layout(diagram: &Diagram) -> Layout {
             };
 
             pos_map.insert(id, (x, y));
+            let style = diagram.node_style(id);
             layout_nodes.push(LayoutNode {
                 id: id.to_string(),
                 x,
@@ -136,6 +193,8 @@ pub fn layout(diagram: &Diagram) -> Layout {
                 height: NODE_HEIGHT,
                 label: node.text.clone(),
                 shape: node.shape,
+                fill: style.get("fill").cloned(),
+                stroke: style.get("stroke").cloned(),
             });
         }
     }
@@ -156,7 +215,23 @@ pub fn layout(diagram: &Diagram) -> Layout {
                 label: e.label.clone(),
                 style: e.style,
                 points: vec![start, (mid_x, mid_y), end],
+                stroke_color: None,
+                stroke_width: None,
             });
+        }
+    }
+
+    // Apply linkStyle overrides by edge index
+    for ls in &diagram.link_styles {
+        if ls.index < layout_edges.len() {
+            let props = parse_edge_properties(&ls.properties);
+            let edge = &mut layout_edges[ls.index];
+            if let Some(c) = props.get("stroke") {
+                edge.stroke_color = Some(c.clone());
+            }
+            if let Some(w) = props.get("stroke-width") {
+                edge.stroke_width = Some(w.clone());
+            }
         }
     }
 
@@ -190,12 +265,52 @@ pub fn layout(diagram: &Diagram) -> Layout {
         }
     }
 
+    let mut layout_subgraphs: Vec<LayoutSubgraph> = Vec::new();
+    for sg in &diagram.subgraphs {
+        let mut min_sx = f64::MAX;
+        let mut min_sy = f64::MAX;
+        let mut max_sx = f64::MIN;
+        let mut max_sy = f64::MIN;
+        for node_id in &sg.nodes {
+            if let Some(&(nx, ny)) = pos_map.get(node_id.as_str()) {
+                let hw = NODE_WIDTH / 2.0;
+                let hh = NODE_HEIGHT / 2.0;
+                min_sx = min_sx.min(nx - hw);
+                min_sy = min_sy.min(ny - hh);
+                max_sx = max_sx.max(nx + hw);
+                max_sy = max_sy.max(ny + hh);
+            }
+        }
+        if min_sx != f64::MAX {
+            let pad = 20.0;
+            layout_subgraphs.push(LayoutSubgraph {
+                id: sg.id.clone(),
+                label: sg.id.clone(),
+                x: (min_sx + max_sx) / 2.0 + ox,
+                y: (min_sy + max_sy) / 2.0 + oy,
+                width: max_sx - min_sx + pad * 2.0,
+                height: max_sy - min_sy + pad * 2.0,
+            });
+        }
+    }
+
     Layout {
         nodes: layout_nodes,
         edges: layout_edges,
+        subgraphs: layout_subgraphs,
         width,
         height,
     }
+}
+
+fn parse_edge_properties(s: &str) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    for part in s.split(',') {
+        if let Some((k, v)) = part.trim().split_once(':') {
+            map.insert(k.trim().to_string(), v.trim().to_string());
+        }
+    }
+    map
 }
 
 fn point_on_rect(

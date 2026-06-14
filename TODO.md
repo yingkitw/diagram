@@ -1,43 +1,50 @@
 # TODO
 
+## Completed
+
+- [x] Core data model (`Node`, `Edge`, `Diagram`, `Subgraph`, styles, classDefs)
+- [x] Mermaid flowchart parser (`graph TD/LR/RL/BT`)
+- [x] Layered graph layout algorithm (BFS-based, supports all 4 directions)
+- [x] SVG renderer with dark theme and 6 node shapes
+- [x] CLI: `parse`, `info`, `render`, `mcp`, `add-node`, `remove-node`, `update-node`, `add-edge`, `remove-edge`, `get-mermaid`, `set-mermaid`, `list-nodes`, `list-edges`
+- [x] MCP server with 12 tools (`parse_diagram`, `get_info`, `render_svg`, `add_node`, `remove_node`, `update_node`, `add_edge`, `remove_edge`, `get_mermaid`, `set_mermaid`, `list_nodes`, `list_edges`)
+- [x] Roundtrip fidelity: parse → manipulate → `to_mermaid()` → parse
+- [x] Node shapes: rect, diamond, stadium, hexagon, cylinder, circle
+- [x] Edge styles: arrow (`-->`), dashed (`-.->`), thick (`==>`)
+- [x] Subgraph support (`subgraph ... end`)
+- [x] Styling directives: `style`, `classDef`, `class`
+- [x] Quoted node IDs with special characters
+- [x] Integration tests for all `examples/` roundtrip + render
+- [x] CI: GitHub Actions (test + build)
+
 ## Short-term
 
-- [x] Core data model (Node, Edge, Diagram)
-- [x] Mermaid parser (flowchart syntax)
-- [x] Graph layout algorithm (layered)
-- [x] SVG renderer
-- [x] CLI subcommands (parse, info, render, add/remove/update node/edge)
-- [x] MCP server with rmcp (12 tools)
-- [x] Roundtrip: parse → manipulate → to_mermaid → parse
-- [x] Node shapes: hexagon (`{{}}`), cylinder (`[()]`), circle (`(())`)
-- [x] Edge types: dashed (`-.->`), thick (`==>`)
-- [x] `set_mermaid` MCP tool (write raw mermaid source)
-- [x] Subgraph support (`subgraph ... end`)
-- [x] Styling: `style` and `classDef` directives
-- [x] CLI: add `get-mermaid`, `set-mermaid`, `list-nodes`, `list-edges` subcommands
-- [x] CLI `add-edge`: add `--style` parameter (arrow/dashed/thick)
-- [x] CLI `update-node --shape` help: update to list all 6 shapes
-- [x] Quoted node IDs with special characters
+- [x] `update-edge` CLI + MCP tool (change label or style on existing edge)
+- [x] `get-node` / `get-edge` CLI + MCP tools (retrieve single item)
+- [x] `validate` CLI command + `validate_diagram` MCP tool (orphaned nodes, dangling edges, cycles)
+- [x] Batch `add-nodes` / `add-edges` MCP tools (reduce round-trips)
+- [x] CLI unit tests (subprocess integration)
+- [x] MCP resource support (`file://{path}` template, read `.mmd` files)
+- [x] MCP prompts (`create_flowchart`, `refactor_diagram`)
 
 ## Medium-term
 
-- [x] Better error messages with file:line info
-- [x] Integration tests with sample diagrams
-- [x] Populate `examples/` directory with sample `.mmd` files
-- [x] CI setup (GitHub Actions: test + build)
-- [ ] MCP resource support (diagram files as resources)
-- [ ] MCP prompts for common diagram operations
-- [ ] Watch mode: auto-reload on file change
-- [ ] CLI unit tests
+- [x] Subgraph visual rendering in SVG (bounding boxes with dashed borders and labels)
+- [x] Node styling (`style` + `classDef`/`class`) applied to SVG fill/stroke
+- [x] Edge styling (`linkStyle`) applied to SVG output (stroke color + width)
+- [x] Watch mode: `diagram render --watch` auto-re-renders SVG on file change
+- [ ] Edge routing improvements (reduce crossings, curved beziers)
+- [ ] Theme support: light/dark toggle in renderer
 - [ ] Tagged releases + `cargo publish`
+- [ ] Diagram diff / merge utilities
 
 ## Longer-term
 
-- [ ] Web UI (wasm-based or lightweight server)
+- [ ] Web UI (wasm-based preview or lightweight server)
 - [ ] Support for sequence diagrams
 - [ ] Support for class diagrams
 - [ ] Support for Gantt charts
 - [ ] VSCode extension via MCP
 - [ ] Plugin system for custom shape renderers
 - [ ] Interactive SVG output (links, tooltips, click events)
-- [ ] Multi-diagram file support (multiple graphs per file)
+- [ ] Multi-diagram file support (multiple graphs per `.mmd` file)
