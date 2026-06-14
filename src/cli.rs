@@ -1,5 +1,6 @@
 use clap::Parser;
 use crate::{diagram as dg, layout, parser, renderer};
+use crate::renderer::Theme;
 
 #[derive(Parser)]
 pub enum Cli {
@@ -20,6 +21,8 @@ pub enum Cli {
         output: Option<String>,
         #[arg(long, help = "Watch file for changes and re-render automatically")]
         watch: bool,
+        #[arg(long, help = "Theme: dark or light")]
+        theme: Option<String>,
     },
 
     #[command(about = "Start MCP server (stdio transport)")]
@@ -32,6 +35,10 @@ pub enum Cli {
         text: String,
         #[arg(long, help = "Node shape: rect, diamond, stadium, hexagon, cylinder, circle")]
         shape: Option<String>,
+        #[arg(long, help = "Hyperlink URL for the node")]
+        href: Option<String>,
+        #[arg(long, help = "Tooltip text for the node")]
+        tooltip: Option<String>,
     },
 
     #[command(about = "Remove a node and its connected edges")]
@@ -48,6 +55,10 @@ pub enum Cli {
         text: Option<String>,
         #[arg(long, help = "New shape: rect, diamond, stadium, hexagon, cylinder, circle")]
         shape: Option<String>,
+        #[arg(long, help = "New hyperlink URL for the node")]
+        href: Option<String>,
+        #[arg(long, help = "New tooltip text for the node")]
+        tooltip: Option<String>,
     },
 
     #[command(about = "Add an edge between two nodes")]
@@ -118,6 +129,20 @@ pub enum Cli {
     Validate {
         path: String,
     },
+
+    #[command(about = "Show differences between two diagrams")]
+    Diff {
+        left: String,
+        right: String,
+    },
+
+    #[command(about = "Merge two diagrams into one")]
+    Merge {
+        left: String,
+        right: String,
+        #[arg(long, help = "Output file path")]
+        output: String,
+    },
 }
 
 impl Cli {
@@ -125,17 +150,21 @@ impl Cli {
         match self {
             Self::Parse { path } => cmd_parse(path),
             Self::Info { path } => cmd_info(path),
-            Self::Render { path, output, watch } => {
+            Self::Render { path, output, watch, theme } => {
+                let theme = match theme.as_deref() {
+                    Some("light") => Theme::Light,
+                    _ => Theme::Dark,
+                };
                 if *watch {
-                    cmd_render_watch(path, output.as_deref()).await
+                    cmd_render_watch(path, output.as_deref(), theme).await
                 } else {
-                    cmd_render(path, output.as_deref())
+                    cmd_render(path, output.as_deref(), theme)
                 }
             }
             Self::Mcp => cmd_mcp().await,
-            Self::AddNode { path, id, text, shape } => cmd_add_node(path, id, text, shape.as_deref()),
+            Self::AddNode { path, id, text, shape, href, tooltip } => cmd_add_node(path, id, text, shape.as_deref(), href.as_deref(), tooltip.as_deref()),
             Self::RemoveNode { path, id } => cmd_remove_node(path, id),
-            Self::UpdateNode { path, id, text, shape } => cmd_update_node(path, id, text.as_deref(), shape.as_deref()),
+            Self::UpdateNode { path, id, text, shape, href, tooltip } => cmd_update_node(path, id, text.as_deref(), shape.as_deref(), href.as_deref(), tooltip.as_deref()),
             Self::AddEdge { path, from, to, label, style } => cmd_add_edge(path, from, to, label.as_deref(), style.as_deref()),
             Self::RemoveEdge { path, from, to } => cmd_remove_edge(path, from, to),
             Self::UpdateEdge { path, from, to, label, style } => cmd_update_edge(path, from, to, label.as_deref(), style.as_deref()),
@@ -146,6 +175,8 @@ impl Cli {
             Self::ListNodes { path } => cmd_list_nodes(path),
             Self::ListEdges { path } => cmd_list_edges(path),
             Self::Validate { path } => cmd_validate(path),
+            Self::Diff { left, right } => cmd_diff(left, right),
+            Self::Merge { left, right, output } => cmd_merge(left, right, output),
         }
     }
 }
@@ -196,10 +227,10 @@ fn cmd_info(path: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn cmd_render(path: &str, output: Option<&str>) -> anyhow::Result<()> {
+fn cmd_render(path: &str, output: Option<&str>, theme: Theme) -> anyhow::Result<()> {
     let diagram = read_diagram(path)?;
     let laid = layout::layout(&diagram);
-    let svg = renderer::render_svg(&laid);
+    let svg = renderer::render_svg_with_theme(&laid, theme);
     match output {
         Some(out_path) => std::fs::write(out_path, &svg)?,
         None => println!("{svg}"),
@@ -207,8 +238,8 @@ fn cmd_render(path: &str, output: Option<&str>) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn cmd_render_watch(path: &str, output: Option<&str>) -> anyhow::Result<()> {
-    cmd_render(path, output)?;
+async fn cmd_render_watch(path: &str, output: Option<&str>, theme: Theme) -> anyhow::Result<()> {
+    cmd_render(path, output, theme)?;
     eprintln!("Watching {path} for changes... (press Ctrl+C to stop)");
 
     let path = path.to_string();
@@ -225,7 +256,7 @@ async fn cmd_render_watch(path: &str, output: Option<&str>) -> anyhow::Result<()
         for event in rx {
             match event {
                 Ok(_) => {
-                    if let Err(e) = cmd_render(&path, output.as_deref()) {
+                    if let Err(e) = cmd_render(&path, output.as_deref(), theme) {
                         eprintln!("Render error: {e}");
                     } else {
                         eprintln!("Re-rendered {path}");
@@ -251,7 +282,7 @@ async fn cmd_mcp() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn cmd_add_node(path: &str, id: &str, text: &str, shape: Option<&str>) -> anyhow::Result<()> {
+fn cmd_add_node(path: &str, id: &str, text: &str, shape: Option<&str>, href: Option<&str>, tooltip: Option<&str>) -> anyhow::Result<()> {
     let mut diagram = read_diagram(path)?;
     let shape = match shape {
         Some(s) => dg::NodeShape::from_str(s)
@@ -263,6 +294,8 @@ fn cmd_add_node(path: &str, id: &str, text: &str, shape: Option<&str>) -> anyhow
             id: id.to_string(),
             text: text.to_string(),
             shape,
+            href: href.map(|s| s.to_string()),
+            tooltip: tooltip.map(|s| s.to_string()),
         })
         .map_err(|e| anyhow::anyhow!("{}", e))?;
     write_diagram(path, &diagram)?;
@@ -283,6 +316,8 @@ fn cmd_update_node(
     id: &str,
     text: Option<&str>,
     shape: Option<&str>,
+    href: Option<&str>,
+    tooltip: Option<&str>,
 ) -> anyhow::Result<()> {
     let mut diagram = read_diagram(path)?;
     let shape = match shape {
@@ -295,6 +330,16 @@ fn cmd_update_node(
     diagram
         .update_node(id, text, shape)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
+    if let Some(h) = href {
+        if let Some(node) = diagram.nodes.iter_mut().find(|n| n.id == id) {
+            node.href = Some(h.to_string());
+        }
+    }
+    if let Some(t) = tooltip {
+        if let Some(node) = diagram.nodes.iter_mut().find(|n| n.id == id) {
+            node.tooltip = Some(t.to_string());
+        }
+    }
     write_diagram(path, &diagram)?;
     println!("Updated node '{id}'");
     Ok(())
@@ -381,6 +426,23 @@ fn cmd_validate(path: &str) -> anyhow::Result<()> {
             println!("  - {issue}");
         }
     }
+    Ok(())
+}
+
+fn cmd_diff(left: &str, right: &str) -> anyhow::Result<()> {
+    let left_diag = read_diagram(left)?;
+    let right_diag = read_diagram(right)?;
+    let diff = left_diag.diff(&right_diag);
+    println!("{}", serde_json::to_string_pretty(&diff)?);
+    Ok(())
+}
+
+fn cmd_merge(left: &str, right: &str, output: &str) -> anyhow::Result<()> {
+    let left_diag = read_diagram(left)?;
+    let right_diag = read_diagram(right)?;
+    let merged = left_diag.merge(&right_diag);
+    std::fs::write(output, merged.to_mermaid())?;
+    println!("Merged diagram written to {output}");
     Ok(())
 }
 

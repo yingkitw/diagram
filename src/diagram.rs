@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 fn parse_properties(s: &str) -> HashMap<String, String> {
     let mut map = HashMap::new();
@@ -77,6 +77,8 @@ pub struct Node {
     pub id: String,
     pub text: String,
     pub shape: NodeShape,
+    pub href: Option<String>,
+    pub tooltip: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -372,4 +374,132 @@ impl Diagram {
         }
         out.trim().to_string()
     }
+
+    pub fn diff(&self, other: &Diagram) -> DiagramDiff {
+        let mut added_nodes: Vec<Node> = Vec::new();
+        let mut removed_nodes: Vec<Node> = Vec::new();
+        let mut modified_nodes: Vec<(Node, Node)> = Vec::new();
+
+        let self_node_map: HashMap<&str, &Node> = self.nodes.iter().map(|n| (n.id.as_str(), n)).collect();
+        let other_node_map: HashMap<&str, &Node> = other.nodes.iter().map(|n| (n.id.as_str(), n)).collect();
+
+        for (&id, &node) in &other_node_map {
+            match self_node_map.get(id) {
+                Some(&old) if old.text != node.text || old.shape != node.shape => {
+                    modified_nodes.push((old.clone(), node.clone()));
+                }
+                None => added_nodes.push(node.clone()),
+                _ => {}
+            }
+        }
+        for (&id, &node) in &self_node_map {
+            if !other_node_map.contains_key(id) {
+                removed_nodes.push(node.clone());
+            }
+        }
+
+        let mut added_edges: Vec<Edge> = Vec::new();
+        let mut removed_edges: Vec<Edge> = Vec::new();
+        let mut modified_edges: Vec<(Edge, Edge)> = Vec::new();
+
+        let self_edge_key = |e: &Edge| format!("{}|{}", e.from, e.to);
+        let other_edge_key = |e: &Edge| format!("{}|{}", e.from, e.to);
+
+        let self_edge_map: HashMap<String, &Edge> = self.edges.iter().map(|e| (self_edge_key(e), e)).collect();
+        let other_edge_map: HashMap<String, &Edge> = other.edges.iter().map(|e| (other_edge_key(e), e)).collect();
+
+        for (key, &edge) in &other_edge_map {
+            match self_edge_map.get(key) {
+                Some(&old) if old.label != edge.label || old.style != edge.style => {
+                    modified_edges.push((old.clone(), edge.clone()));
+                }
+                None => added_edges.push(edge.clone()),
+                _ => {}
+            }
+        }
+        for (key, &edge) in &self_edge_map {
+            if !other_edge_map.contains_key(key) {
+                removed_edges.push(edge.clone());
+            }
+        }
+
+        let rankdir_changed = self.rankdir != other.rankdir;
+
+        DiagramDiff {
+            added_nodes,
+            removed_nodes,
+            modified_nodes,
+            added_edges,
+            removed_edges,
+            modified_edges,
+            rankdir_changed,
+        }
+    }
+
+    pub fn merge(&self, other: &Diagram) -> Diagram {
+        let mut result = self.clone();
+        // Add nodes from other that don't exist in self
+        for n in &other.nodes {
+            if !result.nodes.iter().any(|rn| rn.id == n.id) {
+                result.nodes.push(n.clone());
+            }
+        }
+        // Merge edges: add edges from other that don't exist in self
+        let self_edge_keys: HashSet<String> = result.edges.iter().map(|e| format!("{}|{}", e.from, e.to)).collect();
+        for e in &other.edges {
+            let key = format!("{}|{}", e.from, e.to);
+            if !self_edge_keys.contains(&key) {
+                result.edges.push(e.clone());
+            }
+        }
+        // Prefer other's rankdir if different
+        if !other.rankdir.is_empty() {
+            result.rankdir = other.rankdir.clone();
+        }
+        // Merge styles, class_defs, class_applies, link_styles by deduplication
+        for s in &other.styles {
+            if !result.styles.iter().any(|rs| rs.node_id == s.node_id) {
+                result.styles.push(s.clone());
+            }
+        }
+        for cd in &other.class_defs {
+            if !result.class_defs.iter().any(|rc| rc.name == cd.name) {
+                result.class_defs.push(cd.clone());
+            }
+        }
+        for ca in &other.class_applies {
+            if !result.class_applies.iter().any(|rca| rca.class_name == ca.class_name && rca.node_ids == ca.node_ids) {
+                result.class_applies.push(ca.clone());
+            }
+        }
+        for ls in &other.link_styles {
+            if !result.link_styles.iter().any(|rls| rls.index == ls.index) {
+                result.link_styles.push(ls.clone());
+            }
+        }
+        // Merge subgraphs by ID
+        for sg in &other.subgraphs {
+            if let Some(existing) = result.subgraphs.iter_mut().find(|rsg| rsg.id == sg.id) {
+                for nid in &sg.nodes {
+                    if !existing.nodes.contains(nid) {
+                        existing.nodes.push(nid.clone());
+                    }
+                }
+            } else {
+                result.subgraphs.push(sg.clone());
+            }
+        }
+        result
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiagramDiff {
+    pub added_nodes: Vec<Node>,
+    pub removed_nodes: Vec<Node>,
+    pub modified_nodes: Vec<(Node, Node)>,
+    pub added_edges: Vec<Edge>,
+    pub removed_edges: Vec<Edge>,
+    pub modified_edges: Vec<(Edge, Edge)>,
+    pub rankdir_changed: bool,
 }

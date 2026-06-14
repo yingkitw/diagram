@@ -13,6 +13,8 @@ pub struct LayoutNode {
     pub shape: NodeShape,
     pub fill: Option<String>,
     pub stroke: Option<String>,
+    pub href: Option<String>,
+    pub tooltip: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -195,6 +197,8 @@ pub fn layout(diagram: &Diagram) -> Layout {
                 shape: node.shape,
                 fill: style.get("fill").cloned(),
                 stroke: style.get("stroke").cloned(),
+                href: node.href.clone(),
+                tooltip: node.tooltip.clone(),
             });
         }
     }

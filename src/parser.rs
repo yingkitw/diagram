@@ -509,6 +509,8 @@ fn ensure_node(
             id: id.to_string(),
             text: text.to_string(),
             shape,
+            href: None,
+            tooltip: None,
         });
     }
 }

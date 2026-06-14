@@ -15,6 +15,14 @@ struct FilePath {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct RenderParams {
+    #[schemars(description = "Path to the mermaid .mmd file")]
+    path: String,
+    #[schemars(description = "Theme: dark or light")]
+    theme: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct NodeParams {
     #[schemars(description = "Path to the mermaid .mmd file")]
     path: String,
@@ -24,6 +32,10 @@ struct NodeParams {
     text: String,
     #[schemars(description = "Node shape: rect, diamond, stadium, hexagon, cylinder, circle")]
     shape: Option<String>,
+    #[schemars(description = "Hyperlink URL for the node")]
+    href: Option<String>,
+    #[schemars(description = "Tooltip text for the node")]
+    tooltip: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -36,6 +48,10 @@ struct NodeUpdateParams {
     text: Option<String>,
     #[schemars(description = "New shape: rect, diamond, stadium, hexagon, cylinder, circle")]
     shape: Option<String>,
+    #[schemars(description = "New hyperlink URL for the node")]
+    href: Option<String>,
+    #[schemars(description = "New tooltip text for the node")]
+    tooltip: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -220,13 +236,17 @@ impl DiagramServer {
     }
 
     #[tool(description = "Render diagram as SVG")]
-    async fn render_svg(&self, Parameters(params): Parameters<FilePath>) -> CallToolResult {
+    async fn render_svg(&self, Parameters(params): Parameters<RenderParams>) -> CallToolResult {
         let diagram = match read_file(&params.path) {
             Ok(d) => d,
             Err(e) => return e,
         };
+        let theme = match params.theme.as_deref() {
+            Some("light") => renderer::Theme::Light,
+            _ => renderer::Theme::Dark,
+        };
         let laid = layout::layout(&diagram);
-        let svg = renderer::render_svg(&laid);
+        let svg = renderer::render_svg_with_theme(&laid, theme);
         CallToolResult::success(vec![Content::text(svg)])
     }
 
@@ -250,6 +270,8 @@ impl DiagramServer {
                     id: params.id.clone(),
                     text: params.text.clone(),
                     shape,
+                    href: params.href.clone(),
+                    tooltip: params.tooltip.clone(),
                 })
                 .map_err(|e| CallToolResult::error(vec![Content::text(e)]))?;
             Ok(serde_json::json!({"status": "ok", "id": params.id}).to_string())
@@ -281,6 +303,8 @@ impl DiagramServer {
                         id: id.clone(),
                         text: text.clone(),
                         shape: *shape,
+                        href: None,
+                        tooltip: None,
                     })
                     .map_err(|e| CallToolResult::error(vec![Content::text(e)]))?;
             }
@@ -365,6 +389,14 @@ impl DiagramServer {
             diagram
                 .update_node(&params.id, params.text.as_deref(), shape)
                 .map_err(|e| CallToolResult::error(vec![Content::text(e)]))?;
+            if let Some(node) = diagram.nodes.iter_mut().find(|n| n.id == params.id) {
+                if let Some(h) = &params.href {
+                    node.href = Some(h.clone());
+                }
+                if let Some(t) = &params.tooltip {
+                    node.tooltip = Some(t.clone());
+                }
+            }
             Ok(serde_json::json!({"status": "ok", "updated": params.id}).to_string())
         })
     }
@@ -586,6 +618,61 @@ impl DiagramServer {
             serde_json::to_string_pretty(&edges).unwrap_or_default(),
         )])
     }
+
+    #[tool(description = "Compare two diagrams and show differences")]
+    async fn diff_diagram(&self, Parameters(params): Parameters<DiffParams>) -> CallToolResult {
+        let left = match read_file(&params.left) {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let right = match read_file(&params.right) {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let diff = left.diff(&right);
+        CallToolResult::success(vec![Content::text(
+            serde_json::to_string_pretty(&diff).unwrap_or_default(),
+        )])
+    }
+
+    #[tool(description = "Merge two diagrams into one and write to a file")]
+    async fn merge_diagram(&self, Parameters(params): Parameters<MergeParams>) -> CallToolResult {
+        let left = match read_file(&params.left) {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let right = match read_file(&params.right) {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let merged = left.merge(&right);
+        match std::fs::write(&params.output, merged.to_mermaid()) {
+            Ok(_) => CallToolResult::success(vec![Content::text(format!(
+                "Merged diagram written to {}", params.output
+            ))]),
+            Err(e) => CallToolResult::error(vec![Content::text(format!(
+                "Failed to write output file: {}", e
+            ))]),
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct DiffParams {
+    #[schemars(description = "Path to the left/base mermaid .mmd file")]
+    left: String,
+    #[schemars(description = "Path to the right/modified mermaid .mmd file")]
+    right: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct MergeParams {
+    #[schemars(description = "Path to the left/base mermaid .mmd file")]
+    left: String,
+    #[schemars(description = "Path to the right/modified mermaid .mmd file")]
+    right: String,
+    #[schemars(description = "Output file path for the merged diagram")]
+    output: String,
 }
 
 #[tool_handler]

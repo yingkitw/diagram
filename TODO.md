@@ -33,10 +33,10 @@
 - [x] Node styling (`style` + `classDef`/`class`) applied to SVG fill/stroke
 - [x] Edge styling (`linkStyle`) applied to SVG output (stroke color + width)
 - [x] Watch mode: `diagram render --watch` auto-re-renders SVG on file change
-- [ ] Edge routing improvements (reduce crossings, curved beziers)
-- [ ] Theme support: light/dark toggle in renderer
-- [ ] Tagged releases + `cargo publish`
-- [ ] Diagram diff / merge utilities
+- [x] Edge routing improvements (reduce crossings, curved beziers)
+- [x] Theme support: light/dark toggle in renderer
+- [x] Tagged releases + `cargo publish` (dry-run passes, crate ready)
+- [x] Diagram diff / merge utilities
 
 ## Longer-term
 
@@ -46,5 +46,5 @@
 - [ ] Support for Gantt charts
 - [ ] VSCode extension via MCP
 - [ ] Plugin system for custom shape renderers
-- [ ] Interactive SVG output (links, tooltips, click events)
+- [x] Interactive SVG output (links, tooltips, click events)
 - [ ] Multi-diagram file support (multiple graphs per `.mmd` file)

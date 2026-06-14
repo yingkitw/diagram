@@ -136,3 +136,32 @@ fn test_cli_render_watch_help() {
     assert_eq!(code, 0);
     assert!(stdout.contains("--watch"), "render --help should mention --watch flag\nstdout: {stdout}");
 }
+
+#[test]
+fn test_cli_diff() {
+    let left = temp_mmd("graph TD\n    A[Start] --> B[End]\n");
+    let right = temp_mmd("graph TD\n    A[Start] --> B[Done]\n    A --> C[New]\n");
+    let (stdout, _, code) = run(&["diff", left.to_str().unwrap(), right.to_str().unwrap()]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("added_nodes"), "diff output should contain added_nodes\nstdout: {stdout}");
+    assert!(stdout.contains("C"), "diff output should mention added node C\nstdout: {stdout}");
+}
+
+#[test]
+fn test_cli_merge() {
+    let left = temp_mmd("graph TD\n    A[Start] --> B[End]\n");
+    let right = temp_mmd("graph TD\n    A[Start] --> C[New]\n");
+    let output = std::env::temp_dir().join("merged_test.mmd");
+    let (stdout, _, code) = run(&[
+        "merge",
+        left.to_str().unwrap(),
+        right.to_str().unwrap(),
+        "--output",
+        output.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("Merged"), "merge should report success\nstdout: {stdout}");
+    let merged = std::fs::read_to_string(&output).unwrap();
+    assert!(merged.contains("C[New]"), "merged output should contain new node C\nmerged: {merged}");
+    let _ = std::fs::remove_file(&output);
+}

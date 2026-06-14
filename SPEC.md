@@ -42,7 +42,7 @@ diagram <COMMAND>
 Commands:
   parse        Parse and print JSON
   info         Show diagram summary
-  render       Render as SVG (use --watch to auto-re-render on change)
+  render       Render as SVG (use --watch and --theme)
   mcp          Start MCP server (stdio)
   add-node     Add a node
   remove-node  Remove a node
@@ -57,6 +57,8 @@ Commands:
   list-nodes   List all nodes
   list-edges   List all edges
   validate     Validate diagram
+  diff         Compare two diagrams
+  merge        Merge two diagrams
 ```
 
 ## MCP Tools
@@ -67,7 +69,9 @@ All tools accept `path` (path to `.mmd` file) plus operation-specific parameters
 |------|-----------|---------|
 | `parse_diagram` | path | JSON diagram |
 | `get_info` | path | Summary JSON |
-| `render_svg` | path | SVG string |
+| `render_svg` | path, theme? | SVG string |
+| `diff_diagram` | left, right | Diff JSON |
+| `merge_diagram` | left, right, output | Status JSON |
 | `add_node` | path, id, text, shape? | Status JSON |
 | `remove_node` | path, id | Status JSON |
 | `update_node` | path, id, text?, shape? | Status JSON |
@@ -154,7 +158,7 @@ SVG output uses a layered graph layout algorithm:
 4. Edges are drawn as straight lines with arrow markers
 5. Dark theme by default
 
-**Known limitations:** None major. `style` directives and `classDef`/`class` are fully applied to node fill/stroke. Subgraphs are rendered as bounding boxes with dashed borders. `linkStyle` applies stroke color and width to edges in SVG.
+**Features:** `style` directives and `classDef`/`class` are fully applied to node fill/stroke. Subgraphs are rendered as bounding boxes with dashed borders. `linkStyle` applies stroke color and width to edges. Edges use smooth cubic bezier curves with barycenter crossing-reduction. Nodes can have clickable `href` links and `<title>` tooltips in SVG. Light and dark themes are supported.
 
 ## MCP Resources
 
