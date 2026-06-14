@@ -73,18 +73,17 @@ pub fn layout(diagram: &Diagram) -> Layout {
     let mut queue: VecDeque<&str> = VecDeque::new();
 
     for &id in &all_ids {
-        if incoming.get(id).map_or(true, |i| i.is_empty()) {
+        if incoming.get(id).is_none_or(|i| i.is_empty()) {
             queue.push_back(id);
             layers.insert(id, 0);
         }
     }
 
-    if queue.is_empty() {
-        if let Some(first) = all_ids.iter().next() {
+    if queue.is_empty()
+        && let Some(first) = all_ids.iter().next() {
             queue.push_back(first);
             layers.insert(first, 0);
         }
-    }
 
     let layer_bound = all_ids.len();
     while let Some(node) = queue.pop_front() {
@@ -95,10 +94,7 @@ pub fn layout(diagram: &Diagram) -> Layout {
                 if new_layer >= layer_bound {
                     continue;
                 }
-                let updated = match layers.get(child) {
-                    Some(&existing) if existing >= new_layer => false,
-                    _ => true,
-                };
+                let updated = layers.get(child).is_none_or(|&existing| existing < new_layer);
                 if updated {
                     layers.insert(child, new_layer);
                     queue.push_back(child);

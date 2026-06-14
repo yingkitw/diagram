@@ -23,7 +23,7 @@ pub enum NodeShape {
 }
 
 impl NodeShape {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "rect" | "rectangle" => Some(Self::Rect),
             "diamond" => Some(Self::Diamond),
@@ -50,7 +50,9 @@ impl fmt::Display for NodeShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum EdgeStyle {
+    #[default]
     Arrow,
     Dashed,
     Thick,
@@ -66,11 +68,6 @@ impl EdgeStyle {
     }
 }
 
-impl Default for EdgeStyle {
-    fn default() -> Self {
-        Self::Arrow
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
@@ -309,13 +306,12 @@ impl Diagram {
 
         // Apply classDefs first (lower priority)
         for ca in &self.class_applies {
-            if ca.node_ids.iter().any(|n| n == id) {
-                if let Some(def) = self.class_defs.iter().find(|cd| cd.name == ca.class_name) {
+            if ca.node_ids.iter().any(|n| n == id)
+                && let Some(def) = self.class_defs.iter().find(|cd| cd.name == ca.class_name) {
                     for (k, v) in parse_properties(&def.properties) {
                         props.insert(k, v);
                     }
                 }
-            }
         }
 
         // Inline style overrides classDef (higher priority)

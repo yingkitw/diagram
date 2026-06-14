@@ -47,9 +47,9 @@ fn test_example_styling() {
     let path = examples_dir().join("styling.mmd");
     let source = fs::read_to_string(&path).unwrap();
     let diagram = diagram::parser::parse(&source).unwrap();
-    assert!(diagram.styles.len() >= 1);
-    assert!(diagram.class_defs.len() >= 1);
-    assert!(diagram.class_applies.len() >= 1);
+    assert!(!diagram.styles.is_empty());
+    assert!(!diagram.class_defs.is_empty());
+    assert!(!diagram.class_applies.is_empty());
 }
 
 #[test]

@@ -55,8 +55,8 @@ pub fn parse(source: &str) -> Result<Diagram, ParseError> {
             continue;
         }
 
-        if line_text.starts_with("subgraph ") {
-            let sg_id = line_text[9..].trim().to_string();
+        if let Some(rest) = line_text.strip_prefix("subgraph ") {
+            let sg_id = rest.trim().to_string();
             let mut sg_nodes: Vec<String> = Vec::new();
             i += 1;
             while i < lines.len() && lines[i].1 != "end" {
@@ -121,6 +121,7 @@ pub fn parse(source: &str) -> Result<Diagram, ParseError> {
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn collect_line(
     line: &str,
     nodes: &mut Vec<Node>,
@@ -307,14 +308,7 @@ fn split_arrows(s: &str) -> ParsedLine {
             arrow_types.push(EdgeStyle::Arrow);
             i += 3;
             start = i;
-        } else if i + 3 <= len && &s[i..i + 3] == "==>" {
-            if i > start {
-                segments.push(s[start..i].to_string());
-            }
-            arrow_types.push(EdgeStyle::Thick);
-            i += 3;
-            start = i;
-        } else if i + 3 <= len && &s[i..i + 3] == "===" {
+        } else if i + 3 <= len && (&s[i..i + 3] == "==>" || &s[i..i + 3] == "===") {
             if i > start {
                 segments.push(s[start..i].to_string());
             }
@@ -370,13 +364,12 @@ fn split_nodes(s: &str) -> Vec<String> {
 
 fn extract_label(s: &str, existing: Option<String>) -> (Option<String>, String) {
     let s = s.trim();
-    if let Some(pos) = s.find('|') {
-        if let Some(end) = s[pos + 1..].find('|') {
+    if let Some(pos) = s.find('|')
+        && let Some(end) = s[pos + 1..].find('|') {
             let label = s[pos + 1..pos + 1 + end].to_string();
             let rest = format!("{} {}", &s[..pos].trim(), &s[pos + 2 + end..].trim());
             return (Some(label), rest.trim().to_string());
         }
-    }
     if let Some(existing) = existing {
         return (Some(existing), s.to_string());
     }
@@ -398,44 +391,38 @@ fn parse_node_def(s: &str) -> Option<(String, String, NodeShape)> {
         return None;
     }
 
-    if let Some((id, text)) = extract_cylinder(s) {
-        if is_valid_id(&id) {
+    if let Some((id, text)) = extract_cylinder(s)
+        && is_valid_id(&id) {
             return Some((unquote_id(&id), text, NodeShape::Cylinder));
         }
-    }
 
-    if let Some((id, text)) = extract_bracketed(s, '[', ']') {
-        if is_valid_id(&id) {
+    if let Some((id, text)) = extract_bracketed(s, '[', ']')
+        && is_valid_id(&id) {
             return Some((unquote_id(&id), text, NodeShape::Rect));
         }
-    }
 
-    if let Some((id, text)) = extract_bracketed_double(s, "{{", "}}") {
-        if is_valid_id(&id) {
+    if let Some((id, text)) = extract_bracketed_double(s, "{{", "}}")
+        && is_valid_id(&id) {
             return Some((unquote_id(&id), text, NodeShape::Hexagon));
         }
-    }
 
-    if let Some((id, text)) = extract_bracketed(s, '{', '}') {
-        if is_valid_id(&id) {
+    if let Some((id, text)) = extract_bracketed(s, '{', '}')
+        && is_valid_id(&id) {
             return Some((unquote_id(&id), text, NodeShape::Diamond));
         }
-    }
 
-    if let Some((id, text)) = extract_bracketed_double(s, "((", "))") {
-        if is_valid_id(&id) {
+    if let Some((id, text)) = extract_bracketed_double(s, "((", "))")
+        && is_valid_id(&id) {
             return Some((unquote_id(&id), text, NodeShape::Circle));
         }
-    }
 
-    if let Some((id, text)) = extract_bracketed(s, '(', ')') {
-        if is_valid_id(&id) {
+    if let Some((id, text)) = extract_bracketed(s, '(', ')')
+        && is_valid_id(&id) {
             if text.contains('[') || text.starts_with('(') {
                 return None;
             }
             return Some((unquote_id(&id), text, NodeShape::Stadium));
         }
-    }
 
     if is_valid_id(s) {
         let id = unquote_id(s);
@@ -447,13 +434,12 @@ fn parse_node_def(s: &str) -> Option<(String, String, NodeShape)> {
 
 fn extract_cylinder(s: &str) -> Option<(String, String)> {
     let s = s.trim();
-    if let Some(pos) = s.find("[(") {
-        if s.ends_with(")]") {
+    if let Some(pos) = s.find("[(")
+        && s.ends_with(")]") {
             let id = &s[..pos];
             let inner = &s[pos + 2..s.len() - 2];
             return Some((id.to_string(), inner.to_string()));
         }
-    }
     None
 }
 
@@ -476,24 +462,22 @@ fn unquote_id(s: &str) -> String {
 }
 
 fn extract_bracketed(s: &str, open: char, close: char) -> Option<(String, String)> {
-    if let Some(pos) = s.find(open) {
-        if s.ends_with(close) {
+    if let Some(pos) = s.find(open)
+        && s.ends_with(close) {
             let id = &s[..pos];
             let inner = &s[pos + 1..s.len() - 1];
             return Some((id.to_string(), inner.to_string()));
         }
-    }
     None
 }
 
 fn extract_bracketed_double(s: &str, open: &str, close: &str) -> Option<(String, String)> {
-    if let Some(pos) = s.find(open) {
-        if s.ends_with(close) {
+    if let Some(pos) = s.find(open)
+        && s.ends_with(close) {
             let id = &s[..pos];
             let inner = &s[pos + open.len()..s.len() - close.len()];
             return Some((id.to_string(), inner.to_string()));
         }
-    }
     None
 }
 

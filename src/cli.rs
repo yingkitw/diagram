@@ -203,7 +203,7 @@ fn cmd_parse(path: &str) -> anyhow::Result<()> {
 
 fn cmd_info(path: &str) -> anyhow::Result<()> {
     let diagram = read_diagram(path)?;
-    let mut shapes = vec![0usize; 6];
+    let mut shapes = [0usize; 6];
     for n in &diagram.nodes {
         shapes[match n.shape {
             dg::NodeShape::Rect => 0,
@@ -285,7 +285,7 @@ async fn cmd_mcp() -> anyhow::Result<()> {
 fn cmd_add_node(path: &str, id: &str, text: &str, shape: Option<&str>, href: Option<&str>, tooltip: Option<&str>) -> anyhow::Result<()> {
     let mut diagram = read_diagram(path)?;
     let shape = match shape {
-        Some(s) => dg::NodeShape::from_str(s)
+        Some(s) => dg::NodeShape::parse(s)
             .ok_or_else(|| anyhow::anyhow!("Invalid shape '{s}'. Use: rect, diamond, stadium, hexagon, cylinder, circle"))?,
         None => dg::NodeShape::Rect,
     };
@@ -322,7 +322,7 @@ fn cmd_update_node(
     let mut diagram = read_diagram(path)?;
     let shape = match shape {
         Some(s) => Some(
-            dg::NodeShape::from_str(s)
+            dg::NodeShape::parse(s)
                 .ok_or_else(|| anyhow::anyhow!("Invalid shape '{s}'. Use: rect, diamond, stadium, hexagon, cylinder, circle"))?,
         ),
         None => None,
@@ -330,16 +330,14 @@ fn cmd_update_node(
     diagram
         .update_node(id, text, shape)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
-    if let Some(h) = href {
-        if let Some(node) = diagram.nodes.iter_mut().find(|n| n.id == id) {
+    if let Some(h) = href
+        && let Some(node) = diagram.nodes.iter_mut().find(|n| n.id == id) {
             node.href = Some(h.to_string());
         }
-    }
-    if let Some(t) = tooltip {
-        if let Some(node) = diagram.nodes.iter_mut().find(|n| n.id == id) {
+    if let Some(t) = tooltip
+        && let Some(node) = diagram.nodes.iter_mut().find(|n| n.id == id) {
             node.tooltip = Some(t.to_string());
         }
-    }
     write_diagram(path, &diagram)?;
     println!("Updated node '{id}'");
     Ok(())

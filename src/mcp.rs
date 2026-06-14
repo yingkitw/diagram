@@ -207,7 +207,7 @@ impl DiagramServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let mut shapes = vec![0usize; 6];
+        let mut shapes = [0usize; 6];
         for n in &diagram.nodes {
             shapes[match n.shape {
                 dg::NodeShape::Rect => 0,
@@ -253,7 +253,7 @@ impl DiagramServer {
     #[tool(description = "Add a node to the diagram")]
     async fn add_node(&self, Parameters(params): Parameters<NodeParams>) -> CallToolResult {
         let shape = match &params.shape {
-            Some(s) => match dg::NodeShape::from_str(s) {
+            Some(s) => match dg::NodeShape::parse(s) {
                 Some(s) => s,
                 None => {
                     return CallToolResult::error(vec![Content::text(format!(
@@ -283,7 +283,7 @@ impl DiagramServer {
         let mut parsed_shapes: Vec<(String, String, dg::NodeShape)> = Vec::new();
         for item in &params.items {
             let shape = match &item.shape {
-                Some(s) => match dg::NodeShape::from_str(s) {
+                Some(s) => match dg::NodeShape::parse(s) {
                     Some(s) => s,
                     None => {
                         return CallToolResult::error(vec![Content::text(format!(
@@ -374,7 +374,7 @@ impl DiagramServer {
         Parameters(params): Parameters<NodeUpdateParams>,
     ) -> CallToolResult {
         let shape = match &params.shape {
-            Some(s) => match dg::NodeShape::from_str(s) {
+            Some(s) => match dg::NodeShape::parse(s) {
                 Some(s) => Some(s),
                 None => {
                     return CallToolResult::error(vec![Content::text(format!(
