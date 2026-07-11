@@ -23,6 +23,14 @@ struct CreateParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct LossinessParams {
+    #[schemars(description = "Source diagram file path")]
+    path: String,
+    #[schemars(description = "Target format: mermaid, json, dot, or plantuml")]
+    to: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct MarkdownParams {
     #[schemars(description = "Input Markdown file path")]
     path: String,
@@ -301,7 +309,7 @@ impl DiagramServer {
                 Some(f) => Some(f),
                 None => {
                     return CallToolResult::error(vec![ContentBlock::text(format!(
-                        "Invalid to format '{s}'. Use: mermaid, json"
+                        "Invalid to format '{s}'. Use: mermaid, json, dot, plantuml"
                     ))]);
                 }
             },
@@ -311,15 +319,40 @@ impl DiagramServer {
             Ok(v) => v,
             Err(e) => return CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
         };
-        match crate::formats::export_path(&doc, &params.output, to) {
-            Ok(fmt) => CallToolResult::success(vec![ContentBlock::text(
+        match crate::formats::export_with_report(&doc, &params.output, to) {
+            Ok((fmt, loss)) => CallToolResult::success(vec![ContentBlock::text(
                 serde_json::json!({
                     "status": "ok",
                     "to": fmt.as_str(),
                     "output": params.output,
+                    "lossiness": loss,
                 })
                 .to_string(),
             )]),
+            Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
+        }
+    }
+
+    #[tool(description = "Export lossiness report JSON for a target format")]
+    async fn lossiness_report(&self, Parameters(params): Parameters<LossinessParams>) -> CallToolResult {
+        let format = match params.to.as_deref().unwrap_or("mermaid") {
+            s => match crate::formats::Format::parse(s) {
+                Some(f) => f,
+                None => {
+                    return CallToolResult::error(vec![ContentBlock::text(format!(
+                        "Invalid format '{s}'. Use: mermaid, json, dot, plantuml"
+                    ))]);
+                }
+            },
+        };
+        match crate::ir::load_path(&params.path) {
+            Ok(doc) => {
+                let loss = crate::lossiness::report(&doc, format);
+                match serde_json::to_string_pretty(&loss) {
+                    Ok(json) => CallToolResult::success(vec![ContentBlock::text(json)]),
+                    Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
+                }
+            }
             Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
         }
     }
@@ -391,6 +424,25 @@ impl DiagramServer {
                     "status": "ok",
                     "output": params.output,
                     "format": "png",
+                })
+                .to_string(),
+            )]),
+            Err(e) => CallToolResult::error(vec![ContentBlock::text(e)]),
+        }
+    }
+
+    #[tool(description = "Render diagram to a PDF file")]
+    async fn render_pdf(&self, Parameters(params): Parameters<RenderPngParams>) -> CallToolResult {
+        let theme = match params.theme.as_deref() {
+            Some("light") => renderer::Theme::Light,
+            _ => renderer::Theme::Dark,
+        };
+        match crate::preview::write_render_output(&params.output, &params.path, theme) {
+            Ok(()) => CallToolResult::success(vec![ContentBlock::text(
+                serde_json::json!({
+                    "status": "ok",
+                    "output": params.output,
+                    "format": "pdf",
                 })
                 .to_string(),
             )]),

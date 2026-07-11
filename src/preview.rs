@@ -1,6 +1,32 @@
 //! Lightweight HTTP preview server for live SVG viewing.
 
 use crate::renderer::Theme;
+
+/// Raster output format selected by file extension hint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RasterFormat {
+    Png,
+    Pdf,
+}
+
+/// Detect raster format from an output path (`.png` or `.pdf`).
+pub fn raster_format_from_path(path: &str) -> Option<RasterFormat> {
+    if crate::pdf::output_is_pdf(path) {
+        Some(RasterFormat::Pdf)
+    } else if crate::png::output_is_png(path) {
+        Some(RasterFormat::Png)
+    } else {
+        None
+    }
+}
+
+fn write_raster_bytes(path: &std::path::Path, svg: &str, format: RasterFormat) -> Result<(), String> {
+    let bytes = match format {
+        RasterFormat::Png => crate::png::svg_to_png(svg)?,
+        RasterFormat::Pdf => crate::pdf::svg_to_pdf(svg)?,
+    };
+    std::fs::write(path, bytes).map_err(|e| format!("Failed to write '{}': {e}", path.display()))
+}
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
@@ -15,7 +41,7 @@ pub fn write_render_outputs_to_dir(
     diagram_path: &str,
     output_dir: &std::path::Path,
     theme: Theme,
-    png: bool,
+    raster: Option<RasterFormat>,
 ) -> Result<Vec<std::path::PathBuf>, String> {
     let doc = crate::ir::load_path(diagram_path).map_err(|e| e.to_string())?;
     if doc.diagrams.is_empty() {
@@ -27,16 +53,18 @@ pub fn write_render_outputs_to_dir(
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "diagram".into());
-    let ext = if png { "png" } else { "svg" };
+    let ext = match raster {
+        Some(RasterFormat::Png) => "png",
+        Some(RasterFormat::Pdf) => "pdf",
+        None => "svg",
+    };
     let mut paths = Vec::new();
     for i in 0..doc.diagrams.len() {
         let svg = doc.render_diagram_at(i, theme)?;
         let filename = format!("{stem}-{i}.{ext}");
         let path = output_dir.join(&filename);
-        if png {
-            let bytes = crate::png::svg_to_png(&svg)?;
-            std::fs::write(&path, bytes)
-                .map_err(|e| format!("Failed to write '{}': {e}", path.display()))?;
+        if let Some(fmt) = raster {
+            write_raster_bytes(&path, &svg, fmt)?;
         } else {
             std::fs::write(&path, svg)
                 .map_err(|e| format!("Failed to write '{}': {e}", path.display()))?;
@@ -46,16 +74,15 @@ pub fn write_render_outputs_to_dir(
     Ok(paths)
 }
 
-/// Write rendered output to a path (`.png` → PNG, otherwise SVG).
+/// Write rendered output to a path (`.png`/`.pdf` → raster, otherwise SVG).
 pub fn write_render_output(path: &str, diagram_path: &str, theme: Theme) -> Result<(), String> {
     let svg = render_file(diagram_path, theme)?;
-    if crate::png::output_is_png(path) {
-        let png = crate::png::svg_to_png(&svg)?;
-        std::fs::write(path, png).map_err(|e| format!("Failed to write '{path}': {e}"))?;
+    if let Some(fmt) = raster_format_from_path(path) {
+        write_raster_bytes(std::path::Path::new(path), &svg, fmt)
     } else {
         std::fs::write(path, svg).map_err(|e| format!("Failed to write '{path}': {e}"))?;
+        Ok(())
     }
-    Ok(())
 }
 
 /// HTML shell that polls `/svg` for live updates.

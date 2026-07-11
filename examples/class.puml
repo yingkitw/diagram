@@ -1,0 +1,14 @@
+@startuml
+class Animal {
+  +String name
+  +int age
+  +eat()
+}
+class Dog {
+  +bark()
+}
+class Cat
+Animal <|-- Dog : inherits
+Animal <|-- Cat
+Animal --> Food : eats
+@enduml

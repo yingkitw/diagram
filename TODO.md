@@ -30,20 +30,19 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 
 ## Medium-term (interchange + render)
 
-- [x] PlantUML adapter MVP (sequence → sequence IR; class/activity later)
-- [x] Graphviz DOT import (digraph subset) → flowchart IR
+- [x] PlantUML adapter (sequence, class, activity import; class/sequence export)
+- [x] Graphviz DOT import + export (digraph subset) ↔ flowchart IR
 - [x] PNG export (resvg; `.png` output via `diagram render`)
+- [x] PDF export (resvg + printpdf; `.pdf` output via `diagram render`)
 - [x] Multi-diagram Document (several kinds / figures per file)
 - [x] Markdown pipeline: extract fenced blocks → render → rewrite links
-- [ ] Lossiness report on export (what could not be represented)
+- [x] Lossiness report on export (what could not be represented)
 
 ## Longer-term
 
 - [ ] D2 / Excalidraw / Kroki-adjacent adapters as demand warrants
-- [ ] PDF export
 - [ ] State + ER kinds (IR + Mermaid Compatibility)
 - [ ] Sequence/class/gantt extras (notes, loops, interfaces, milestones, …)
-- [ ] VS Code extension (thin client over MCP + preview)
 - [ ] Plugin API for custom shapes / render backends
 - [ ] Wasm embed for browser preview without local server
 - [ ] Semantic diff UX (structural, not only text)

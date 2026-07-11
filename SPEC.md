@@ -2,7 +2,7 @@
 
 ## Overview
 
-`diagram` is a Rust CLI and MCP **diagram platform**: render, generate, analyze, and interchange diagrams via a canonical **IR**, with **Compatibility** adapters for Mermaid, Graphviz DOT (import), PlantUML sequence (import), and more planned. See `CONTEXT.md` and `docs/adr/0001-canonical-ir-and-format-adapters.md`.
+`diagram` is a Rust CLI and MCP **diagram platform**: render, generate, analyze, and interchange diagrams via a canonical **IR**, with **Compatibility** adapters for Mermaid, Graphviz DOT, PlantUML (sequence, class, activity), and more planned. See `CONTEXT.md` and `docs/adr/0001-canonical-ir-and-format-adapters.md`.
 
 **Current shipping surface:** Mermaid or JSON IR → `Document`; parse/ir/import/export; info/render/preview; flowchart generate/edit; validate/diff/merge; SVG export.
 
@@ -105,8 +105,9 @@ Commands:
   ir           Alias for parse (canonical JSON IR)
   import       Import Mermaid/DOT/PlantUML/JSON → JSON IR file
   export       Export diagram → Mermaid or JSON IR
+  lossiness    Report export fidelity / unsupported fields
   info         Show diagram summary
-  render       Render as SVG or PNG (use --output extension, --watch, --theme)
+  render       Render as SVG, PNG, or PDF (use --output extension, --watch, --theme)
   mcp          Start MCP server (stdio)
   add-node     Add a node
   remove-node  Remove a node
@@ -138,11 +139,13 @@ All tools accept `path` (path to `.mmd` file) plus operation-specific parameters
 | `parse_diagram` | path | Canonical JSON IR |
 | `get_info` | path | Summary JSON (kind, counts, ir_version) |
 | `import_diagram` | path, output, from? | Status JSON |
-| `export_diagram` | path, output, to? | Status JSON |
+| `export_diagram` | path, output, to? | Status JSON + lossiness |
+| `lossiness_report` | path, to? | Lossiness JSON |
 | `metrics_diagram` | path | Metrics JSON |
 | `create_diagram` | kind, output | Status JSON |
 | `render_svg` | path, theme? | SVG string |
 | `render_png` | path, output, theme? | Status JSON |
+| `render_pdf` | path, output, theme? | Status JSON |
 | `process_markdown` | path, output_dir, output, format?, theme? | Status JSON |
 | `diff_diagram` | left, right | Diff JSON |
 | `merge_diagram` | left, right, output | Status JSON |
@@ -225,6 +228,7 @@ pub mod layout;
 pub mod markdown;
 pub mod mcp;
 pub mod parser;
+pub mod pdf;
 pub mod png;
 pub mod preview;
 pub mod renderer;

@@ -24,7 +24,7 @@ pub enum RelationKind {
 }
 
 impl RelationKind {
-    fn mermaid_str(self) -> &'static str {
+    pub(crate) fn mermaid_str(self) -> &'static str {
         match self {
             Self::Inheritance => "<|--",
             Self::Composition => "*--",
@@ -192,7 +192,7 @@ pub fn parse(source: &str) -> Result<ClassDiagram, ParseError> {
             }
         }
 
-        if let Some(rel) = parse_relation(text) {
+        if let Some(rel) = parse_relation_line(text) {
             ensure_class(&mut classes, &mut order, &rel.from);
             ensure_class(&mut classes, &mut order, &rel.to);
             relations.push(rel);
@@ -214,7 +214,7 @@ pub fn parse(source: &str) -> Result<ClassDiagram, ParseError> {
     Ok(ClassDiagram { classes, relations })
 }
 
-fn ensure_class(classes: &mut HashMap<String, Class>, order: &mut Vec<String>, id: &str) {
+pub(crate) fn ensure_class(classes: &mut HashMap<String, Class>, order: &mut Vec<String>, id: &str) {
     if !classes.contains_key(id) {
         order.push(id.to_string());
         classes.insert(
@@ -227,7 +227,7 @@ fn ensure_class(classes: &mut HashMap<String, Class>, order: &mut Vec<String>, i
     }
 }
 
-fn parse_relation(text: &str) -> Option<Relation> {
+pub(crate) fn parse_relation_line(text: &str) -> Option<Relation> {
     // Longest tokens first.
     let kinds = [
         ("..|>", RelationKind::Realization),

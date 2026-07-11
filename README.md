@@ -31,6 +31,9 @@ diagram ir sample.mmd
 # Import / export interchange
 diagram import examples/sequence.puml --output sample.ir.json
 diagram export sample.ir.json --output out.mmd --to mermaid
+diagram export sample.ir.json --output out.dot --to dot
+diagram export sample.ir.json --output out.puml --to plantuml
+diagram lossiness sample.ir.json --to mermaid
 
 # Analyze
 diagram validate sample.mmd
@@ -55,9 +58,10 @@ diagram mcp   # agent tools over stdio
 | Mermaid (`.mmd`) | Primary import + roundtrip for flowchart/sequence/class/gantt | Keep high Compatibility |
 | Native JSON IR | Canonical interchange (`diagram ir`, `import`/`export`) | Stable |
 | SVG | Render export | Stable |
-| PlantUML (`.puml`) | Sequence import → sequence IR (MVP) | Class, activity, export |
-| Graphviz DOT (`.dot`) | Import → flowchart IR (digraph subset) | Expand subset; export later |
+| PlantUML (`.puml`) | Sequence + class import/export; activity → flowchart IR | Activity export |
+| Graphviz DOT (`.dot`) | Import + export flowchart IR (digraph subset) | Expand subset |
 | PNG | Render export (`.png` via `diagram render`) | Stable |
+| PDF | Render export (`.pdf` via `diagram render`; raster embed) | Stable |
 | PDF | — | Render export (planned) |
 
 ## CLI (current)
@@ -66,6 +70,7 @@ diagram mcp   # agent tools over stdio
 diagram parse sample.mmd
 diagram info sample.mmd
 diagram render sample.mmd [--output out.svg] [--watch] [--theme dark|light]
+diagram render sample.mmd --output out.pdf
 diagram preview sample.mmd [--port 3030] [--theme dark|light]
 diagram validate sample.mmd
 diagram metrics sample.mmd

@@ -28,7 +28,16 @@ pub enum Cli {
         path: String,
         #[arg(long, short, help = "Output file path")]
         output: String,
-        #[arg(long, help = "Target format: mermaid or json (auto-detect if omitted)")]
+        #[arg(long, help = "Target format: mermaid, json, dot, or plantuml (auto-detect if omitted)")]
+        to: Option<String>,
+        #[arg(long, help = "Print lossiness summary after export")]
+        report: bool,
+    },
+
+    #[command(about = "Report export lossiness (what IR fields a format cannot represent)")]
+    Lossiness {
+        path: String,
+        #[arg(long, help = "Target format: mermaid, json, dot, or plantuml (default: mermaid)")]
         to: Option<String>,
     },
 
@@ -40,7 +49,7 @@ pub enum Cli {
     #[command(about = "Render diagram as SVG or PNG (format from --output extension)")]
     Render {
         path: String,
-        #[arg(long, help = "Output file path: .svg or .png (prints SVG to stdout if not set)")]
+        #[arg(long, help = "Output file path: .svg, .png, or .pdf (prints SVG to stdout if not set)")]
         output: Option<String>,
         #[arg(long, help = "Render each diagram to separate files in this directory")]
         output_dir: Option<String>,
@@ -213,7 +222,8 @@ impl Cli {
             Self::Parse { path } => cmd_ir(path),
             Self::Ir { path } => cmd_ir(path),
             Self::Import { path, output, from } => cmd_import(path, output, from.as_deref()),
-            Self::Export { path, output, to } => cmd_export(path, output, to.as_deref()),
+            Self::Export { path, output, to, report } => cmd_export(path, output, to.as_deref(), *report),
+            Self::Lossiness { path, to } => cmd_lossiness(path, to.as_deref()),
             Self::Info { path } => cmd_info(path),
             Self::Render { path, output, output_dir, index, watch, theme } => {
                 let theme = match theme.as_deref() {
@@ -297,13 +307,29 @@ fn cmd_import(path: &str, output: &str, from: Option<&str>) -> anyhow::Result<()
     Ok(())
 }
 
-fn cmd_export(path: &str, output: &str, to: Option<&str>) -> anyhow::Result<()> {
+fn cmd_export(path: &str, output: &str, to: Option<&str>, report: bool) -> anyhow::Result<()> {
     let to_fmt = to.map(parse_format).transpose()?;
     let (doc, _) = crate::formats::import_path(path, None)
         .map_err(|e| anyhow::anyhow!("{e}"))?;
-    let fmt = crate::formats::export_path(&doc, output, to_fmt)
+    let (fmt, loss) = crate::formats::export_with_report(&doc, output, to_fmt)
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     println!("Exported {fmt:?} to {output}");
+    if report {
+        println!("{}", serde_json::to_string_pretty(&loss)?);
+    } else if let Some(line) = crate::lossiness::summary_line(&loss) {
+        eprintln!("{line}");
+    }
+    Ok(())
+}
+
+fn cmd_lossiness(path: &str, to: Option<&str>) -> anyhow::Result<()> {
+    let format = match to {
+        Some(s) => parse_format(s)?,
+        None => crate::formats::Format::Mermaid,
+    };
+    let doc = crate::ir::load_path(path).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let loss = crate::lossiness::report(&doc, format);
+    println!("{}", serde_json::to_string_pretty(&loss)?);
     Ok(())
 }
 
@@ -325,12 +351,12 @@ fn cmd_render(
     let doc = crate::ir::load_path(path).map_err(|e| anyhow::anyhow!("{e}"))?;
 
     if let Some(dir) = output_dir {
-        let png = output.is_some_and(crate::png::output_is_png);
+        let raster = output.and_then(crate::preview::raster_format_from_path);
         let paths = crate::preview::write_render_outputs_to_dir(
             path,
             std::path::Path::new(dir),
             theme,
-            png,
+            raster,
         )
         .map_err(|e| anyhow::anyhow!("{e}"))?;
         println!("Rendered {} diagram(s) → {}", paths.len(), dir);
@@ -346,9 +372,16 @@ fn cmd_render(
 
     match output {
         Some(out_path) => {
-            if crate::png::output_is_png(out_path) {
-                let png = crate::png::svg_to_png(&svg).map_err(|e| anyhow::anyhow!("{e}"))?;
-                std::fs::write(out_path, png)?;
+            if let Some(fmt) = crate::preview::raster_format_from_path(out_path) {
+                let bytes = match fmt {
+                    crate::preview::RasterFormat::Png => {
+                        crate::png::svg_to_png(&svg).map_err(|e| anyhow::anyhow!("{e}"))?
+                    }
+                    crate::preview::RasterFormat::Pdf => {
+                        crate::pdf::svg_to_pdf(&svg).map_err(|e| anyhow::anyhow!("{e}"))?
+                    }
+                };
+                std::fs::write(out_path, bytes)?;
             } else {
                 std::fs::write(out_path, &svg)?;
             }

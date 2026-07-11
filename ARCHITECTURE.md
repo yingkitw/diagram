@@ -30,6 +30,10 @@ main.rs
   ├── mcp.rs      — MCP tools (stdio)
   ├── preview.rs  — localhost live SVG preview; render to SVG/PNG
   ├── png.rs      — SVG → PNG via resvg
+  ├── pdf.rs      — SVG → PDF via resvg + printpdf (raster embed)
+  ├── lossiness.rs — export fidelity reports per Format
+  ├── composite.rs — multi-diagram vertical SVG composite
+  ├── markdown.rs — fenced block extract → render → rewrite links
   ├── diagram.rs  — flowchart IR (Node, Edge, Subgraph, styles)
   ├── parser.rs   — Mermaid flowchart → flowchart IR
   ├── sequence.rs — Mermaid sequence → sequence IR → SVG
@@ -50,8 +54,8 @@ Detection today: `formats::detect` on path/content → Mermaid or JSON IR → `i
 | Area | Responsibility | Status |
 |------|----------------|--------|
 | `ir` | Canonical `Document` / `Diagram` / `Kind`; JSON | Shipped |
-| `formats` | Adapters: Mermaid, JSON IR, DOT, PlantUML (sequence) | Partial |
-| `render` | Kind-aware layout + SVG/PNG backends | Partial (SVG + PNG) |
+| `formats` | Adapters: Mermaid, JSON IR, DOT, PlantUML (sequence + class) | Partial |
+| `render` | Kind-aware layout + SVG/PNG/PDF backends | Partial (SVG + PNG + PDF raster) |
 | `analyze` | Validate, diff, merge, metrics (IR in → report out) | Partial (metrics shipped) |
 | `generate` | CLI/MCP mutations and templates against IR | Partial (create scaffolds) |
 

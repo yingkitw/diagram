@@ -38,6 +38,152 @@ pub fn parse_to_document(source: &str) -> Result<Document, IrError> {
     Ok(Document::single(crate::ir::Diagram::Flowchart(parse(source)?)))
 }
 
+/// Export a Document to Graphviz DOT (flowchart diagrams only).
+pub fn export_document(doc: &Document) -> Result<String, IrError> {
+    let flowcharts: Vec<(usize, &Diagram)> = doc
+        .diagrams
+        .iter()
+        .enumerate()
+        .filter_map(|(i, d)| match d {
+            crate::ir::Diagram::Flowchart(fc) => Some((i, fc)),
+            _ => None,
+        })
+        .collect();
+
+    if flowcharts.is_empty() {
+        return Err(IrError::from("DOT export supports flowchart diagrams only"));
+    }
+
+    let multi = doc.diagrams.len() > 1;
+    let blocks: Vec<String> = flowcharts
+        .into_iter()
+        .map(|(i, fc)| {
+            let mut block = String::new();
+            if multi {
+                block.push_str(&format!("// diagram {i}: flowchart\n"));
+            }
+            let name = if multi {
+                format!("diagram_{i}")
+            } else {
+                "G".into()
+            };
+            block.push_str(&export_flowchart(fc, &name));
+            block
+        })
+        .collect();
+
+    Ok(blocks.join("\n\n"))
+}
+
+fn export_flowchart(d: &Diagram, name: &str) -> String {
+    let mut out = String::new();
+    out.push_str("digraph ");
+    out.push_str(name);
+    out.push_str(" {\n");
+
+    let rankdir = map_rankdir_out(&d.rankdir);
+    if rankdir != "TB" {
+        out.push_str("    rankdir=");
+        out.push_str(rankdir);
+        out.push_str(";\n");
+    }
+
+    for node in &d.nodes {
+        out.push_str("    ");
+        out.push_str(&crate::diagram::format_id(&node.id));
+        let attrs = node_attrs(node);
+        if attrs.is_empty() {
+            out.push_str(";\n");
+        } else {
+            out.push_str(" [");
+            out.push_str(&attrs);
+            out.push_str("];\n");
+        }
+    }
+
+    for sg in &d.subgraphs {
+        out.push_str("    subgraph ");
+        out.push_str(&crate::diagram::format_id(&sg.id));
+        out.push_str(" {\n");
+        for id in &sg.nodes {
+            out.push_str("        ");
+            out.push_str(&crate::diagram::format_id(id));
+            out.push_str(";\n");
+        }
+        out.push_str("    }\n");
+    }
+
+    for edge in &d.edges {
+        out.push_str("    ");
+        out.push_str(&crate::diagram::format_id(&edge.from));
+        out.push_str(" -> ");
+        out.push_str(&crate::diagram::format_id(&edge.to));
+        let attrs = edge_attrs(edge);
+        if attrs.is_empty() {
+            out.push_str(";\n");
+        } else {
+            out.push_str(" [");
+            out.push_str(&attrs);
+            out.push_str("];\n");
+        }
+    }
+
+    out.push_str("}\n");
+    out
+}
+
+fn node_attrs(node: &Node) -> String {
+    let mut parts = Vec::new();
+    if node.text != node.id {
+        parts.push(format!("label={}", dot_quote(&node.text)));
+    }
+    if let Some(shape) = shape_to_dot(node.shape) {
+        parts.push(format!("shape={shape}"));
+    }
+    parts.join(", ")
+}
+
+fn edge_attrs(edge: &Edge) -> String {
+    let mut parts = Vec::new();
+    if !edge.label.is_empty() {
+        parts.push(format!("label={}", dot_quote(&edge.label)));
+    }
+    match edge.style {
+        EdgeStyle::Arrow => {}
+        EdgeStyle::Dashed => parts.push("style=dashed".into()),
+        EdgeStyle::Thick => parts.push("style=bold".into()),
+    }
+    parts.join(", ")
+}
+
+fn dot_quote(s: &str) -> String {
+    format!(
+        "\"{}\"",
+        s.replace('\\', "\\\\").replace('"', "\\\"")
+    )
+}
+
+fn map_rankdir_out(value: &str) -> &'static str {
+    match value.to_uppercase().as_str() {
+        "LR" => "LR",
+        "BT" => "BT",
+        "RL" => "RL",
+        "TD" | "TB" => "TB",
+        _ => "TB",
+    }
+}
+
+fn shape_to_dot(shape: NodeShape) -> Option<&'static str> {
+    match shape {
+        NodeShape::Rect => None,
+        NodeShape::Diamond => Some("diamond"),
+        NodeShape::Stadium => Some("ellipse"),
+        NodeShape::Hexagon => Some("hexagon"),
+        NodeShape::Cylinder => Some("cylinder"),
+        NodeShape::Circle => Some("circle"),
+    }
+}
+
 struct Parser<'a> {
     input: &'a str,
     pos: usize,
@@ -509,7 +655,7 @@ fn map_shape(value: &str) -> Option<NodeShape> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::Kind;
+    use crate::ir::{Diagram as IrDiagram, Kind};
 
     #[test]
     fn is_dot_distinguishes_mermaid() {
@@ -587,5 +733,46 @@ mod tests {
         let d = parse("digraph { foo -> bar }").unwrap();
         assert_eq!(d.nodes.len(), 2);
         assert!(d.nodes.iter().any(|n| n.id == "foo"));
+    }
+
+    #[test]
+    fn export_basic_flowchart() {
+        let d = parse(
+            r#"digraph G {
+            A [label="Start"];
+            B [label="End", shape=diamond];
+            A -> B [label="go"];
+        }"#,
+        )
+        .unwrap();
+        let doc = Document::single(crate::ir::Diagram::Flowchart(d));
+        let out = export_document(&doc).unwrap();
+        assert!(out.contains("digraph G"));
+        assert!(out.contains("label=\"Start\""));
+        assert!(out.contains("shape=diamond"));
+        assert!(out.contains("label=\"go\""));
+    }
+
+    #[test]
+    fn export_import_roundtrip() {
+        let src = r#"digraph flow {
+            rankdir=LR;
+            Start [label="Start", shape=box];
+            End [label="End", shape=diamond];
+            Start -> End [label="go"];
+        }"#;
+        let doc = parse_to_document(src).unwrap();
+        let out = export_document(&doc).unwrap();
+        let doc2 = parse_to_document(&out).unwrap();
+        let IrDiagram::Flowchart(d1) = doc.primary().unwrap() else {
+            panic!("expected flowchart");
+        };
+        let IrDiagram::Flowchart(d2) = doc2.primary().unwrap() else {
+            panic!("expected flowchart");
+        };
+        assert_eq!(d1.nodes.len(), d2.nodes.len());
+        assert_eq!(d1.edges.len(), d2.edges.len());
+        assert_eq!(d1.edges[0].label, d2.edges[0].label);
+        assert_eq!(d1.nodes[1].shape, d2.nodes[1].shape);
     }
 }

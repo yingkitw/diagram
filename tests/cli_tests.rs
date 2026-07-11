@@ -223,6 +223,22 @@ fn test_cli_markdown_pipeline() {
 }
 
 #[test]
+fn test_cli_render_pdf() {
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.mmd");
+    let out = std::env::temp_dir().join(format!("diagram_render_{}.pdf", std::process::id()));
+    let (_, _, code) = run(&[
+        "render",
+        src.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0);
+    let bytes = std::fs::read(&out).unwrap();
+    assert!(bytes.starts_with(b"%PDF-"));
+    let _ = std::fs::remove_file(&out);
+}
+
+#[test]
 fn test_cli_render_png() {
     let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.mmd");
     let out = std::env::temp_dir().join(format!("diagram_render_{}.png", std::process::id()));
@@ -353,6 +369,76 @@ fn test_cli_import_dot() {
     let body = std::fs::read_to_string(&json_out).unwrap();
     assert!(body.contains("\"kind\": \"flowchart\""), "body: {body}");
     let _ = std::fs::remove_file(&json_out);
+}
+
+#[test]
+fn test_cli_lossiness_json_lossless() {
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.mmd");
+    let (stdout, _, code) = run(&["lossiness", src.to_str().unwrap(), "--to", "json"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("\"lossless\": true"), "stdout: {stdout}");
+}
+
+#[test]
+fn test_cli_export_plantuml() {
+    use std::fs;
+    let src =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/sequence.puml");
+    let json_out =
+        std::env::temp_dir().join(format!("diagram_puml_ir_{}.json", std::process::id()));
+    let puml_out =
+        std::env::temp_dir().join(format!("diagram_puml_out_{}.puml", std::process::id()));
+    let (_, _, code) = run(&[
+        "import",
+        src.to_str().unwrap(),
+        "--output",
+        json_out.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0);
+    let (_, _, code) = run(&[
+        "export",
+        json_out.to_str().unwrap(),
+        "--output",
+        puml_out.to_str().unwrap(),
+        "--to",
+        "plantuml",
+    ]);
+    assert_eq!(code, 0);
+    let out = fs::read_to_string(&puml_out).unwrap();
+    assert!(out.contains("@startuml"));
+    assert!(out.contains("Alice"));
+    let _ = fs::remove_file(&json_out);
+    let _ = fs::remove_file(&puml_out);
+}
+
+#[test]
+fn test_cli_export_dot() {
+    use std::fs;
+    let src =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.dot");
+    let json_out = std::env::temp_dir().join(format!("diagram_dot_ir_{}.json", std::process::id()));
+    let dot_out = std::env::temp_dir().join(format!("diagram_dot_out_{}.dot", std::process::id()));
+    let (_, _, code) = run(&[
+        "import",
+        src.to_str().unwrap(),
+        "--output",
+        json_out.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0);
+    let (_, _, code) = run(&[
+        "export",
+        json_out.to_str().unwrap(),
+        "--output",
+        dot_out.to_str().unwrap(),
+        "--to",
+        "dot",
+    ]);
+    assert_eq!(code, 0);
+    let out = fs::read_to_string(&dot_out).unwrap();
+    assert!(out.contains("digraph"));
+    assert!(out.contains("Start"));
+    let _ = fs::remove_file(&json_out);
+    let _ = fs::remove_file(&dot_out);
 }
 
 #[test]

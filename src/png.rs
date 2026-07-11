@@ -1,7 +1,7 @@
 //! SVG → PNG rasterization (Chromium-free).
 
-/// Rasterize SVG text to PNG bytes.
-pub fn svg_to_png(svg: &str) -> Result<Vec<u8>, String> {
+/// Parse SVG and rasterize to a pixmap.
+pub fn svg_to_pixmap(svg: &str) -> Result<tiny_skia::Pixmap, String> {
     let mut opt = usvg::Options::default();
     opt.fontdb_mut().load_system_fonts();
 
@@ -20,6 +20,12 @@ pub fn svg_to_png(svg: &str) -> Result<Vec<u8>, String> {
         &mut pixmap.as_mut(),
     );
 
+    Ok(pixmap)
+}
+
+/// Rasterize SVG text to PNG bytes.
+pub fn svg_to_png(svg: &str) -> Result<Vec<u8>, String> {
+    let pixmap = svg_to_pixmap(svg)?;
     pixmap.encode_png().map_err(|e| e.to_string())
 }
 

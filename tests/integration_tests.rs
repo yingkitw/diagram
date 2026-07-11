@@ -433,6 +433,29 @@ fn test_plantuml_example_parse_and_render() {
 }
 
 #[test]
+fn test_plantuml_class_example_parse_and_render() {
+    let path = examples_dir().join("class.puml");
+    let doc = diagram::ir::load_path(path.to_str().unwrap()).unwrap();
+    assert_eq!(doc.primary().unwrap().kind(), diagram::ir::Kind::Class);
+    let svg = diagram::preview::render_file(path.to_str().unwrap(), diagram::renderer::Theme::Dark)
+        .unwrap();
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("Animal"));
+    assert!(svg.contains("Dog"));
+}
+
+#[test]
+fn test_plantuml_activity_example_parse_and_render() {
+    let path = examples_dir().join("activity.puml");
+    let doc = diagram::ir::load_path(path.to_str().unwrap()).unwrap();
+    assert_eq!(doc.primary().unwrap().kind(), diagram::ir::Kind::Flowchart);
+    let svg = diagram::preview::render_file(path.to_str().unwrap(), diagram::renderer::Theme::Dark)
+        .unwrap();
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("Receive request"));
+}
+
+#[test]
 fn test_dot_example_parse_and_render() {
     let path = examples_dir().join("simple-flowchart.dot");
     let doc = diagram::ir::load_path(path.to_str().unwrap()).unwrap();
@@ -458,6 +481,21 @@ fn test_multi_document_composite_render() {
     let mmd = doc.to_mermaid().unwrap();
     let doc2 = diagram::formats::import_str(&mmd, diagram::formats::Format::Mermaid).unwrap();
     assert_eq!(doc2.diagrams.len(), 2);
+}
+
+#[test]
+fn test_render_flowchart_pdf_file() {
+    let path = examples_dir().join("simple-flowchart.mmd");
+    let out = std::env::temp_dir().join(format!("diagram_int_pdf_{}.pdf", std::process::id()));
+    diagram::preview::write_render_output(
+        out.to_str().unwrap(),
+        path.to_str().unwrap(),
+        diagram::renderer::Theme::Dark,
+    )
+    .unwrap();
+    let bytes = std::fs::read(&out).unwrap();
+    assert!(bytes.starts_with(b"%PDF-"));
+    let _ = std::fs::remove_file(&out);
 }
 
 #[test]

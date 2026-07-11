@@ -84,8 +84,8 @@ pub fn export_str(doc: &Document, format: Format) -> Result<String, IrError> {
         Format::JsonIr => doc
             .to_json()
             .map_err(|e| IrError::from(format!("JSON serialize failed: {e}"))),
-        Format::Dot => Err(IrError::from("DOT export is not supported yet")),
-        Format::PlantUml => Err(IrError::from("PlantUML export is not supported yet")),
+        Format::Dot => dot::export_document(doc),
+        Format::PlantUml => plantuml::export_document(doc),
     }
 }
 
@@ -103,13 +103,59 @@ pub fn export_path(doc: &Document, path: &str, to: Option<Format>) -> Result<For
         let lower = path.to_lowercase();
         if lower.ends_with(".json") {
             Format::JsonIr
+        } else if lower.ends_with(".dot") || lower.ends_with(".gv") {
+            Format::Dot
+        } else if lower.ends_with(".puml") || lower.ends_with(".plantuml") {
+            Format::PlantUml
         } else {
             Format::Mermaid
         }
     });
+    let loss = crate::lossiness::report(doc, format);
+    if !loss.export_supported {
+        return Err(IrError::from(
+            loss.warnings
+                .first()
+                .map(|w| w.message.clone())
+                .unwrap_or_else(|| "export not supported".into()),
+        ));
+    }
     let body = export_str(doc, format)?;
     std::fs::write(path, body).map_err(|e| format!("Failed to write '{path}': {e}"))?;
     Ok(format)
+}
+
+/// Export with lossiness report (for MCP/CLI status).
+pub fn export_with_report(
+    doc: &Document,
+    path: &str,
+    to: Option<Format>,
+) -> Result<(Format, crate::lossiness::LossinessReport), IrError> {
+    let format = to.unwrap_or_else(|| {
+        let lower = path.to_lowercase();
+        if lower.ends_with(".json") {
+            Format::JsonIr
+        } else if lower.ends_with(".dot") || lower.ends_with(".gv") {
+            Format::Dot
+        } else if lower.ends_with(".puml") || lower.ends_with(".plantuml") {
+            Format::PlantUml
+        } else {
+            Format::Mermaid
+        }
+    });
+    let report = crate::lossiness::report(doc, format);
+    if !report.export_supported {
+        return Err(IrError::from(
+            report
+                .warnings
+                .first()
+                .map(|w| w.message.clone())
+                .unwrap_or_else(|| "export not supported".into()),
+        ));
+    }
+    let body = export_str(doc, format)?;
+    std::fs::write(path, body).map_err(|e| format!("Failed to write '{path}': {e}"))?;
+    Ok((format, report))
 }
 
 #[cfg(test)]
@@ -148,6 +194,38 @@ mod tests {
         let out = export_str(&doc, Format::Mermaid).unwrap();
         assert!(out.contains("sequenceDiagram"));
         assert!(out.contains("hi"));
+    }
+
+    #[test]
+    fn plantuml_activity_import() {
+        let src = "@startuml\nstart\n:Go;\nstop\n@enduml";
+        let doc = import_str(src, Format::PlantUml).unwrap();
+        assert_eq!(doc.primary().unwrap().kind(), crate::ir::Kind::Flowchart);
+        let out = export_str(&doc, Format::Mermaid).unwrap();
+        assert!(out.contains("Go"));
+    }
+
+    #[test]
+    fn plantuml_export_roundtrip() {
+        let src = "@startuml\nAlice -> Bob: hi\n@enduml";
+        let doc = import_str(src, Format::PlantUml).unwrap();
+        let out = export_str(&doc, Format::PlantUml).unwrap();
+        assert!(out.contains("@startuml"));
+        let doc2 = import_str(&out, Format::PlantUml).unwrap();
+        let mmd = export_str(&doc2, Format::Mermaid).unwrap();
+        assert!(mmd.contains("sequenceDiagram"));
+    }
+
+    #[test]
+    fn dot_export_roundtrip() {
+        let src = r#"digraph G { A [label="Start"] -> B [label="End"]; }"#;
+        let doc = import_str(src, Format::Dot).unwrap();
+        let out = export_str(&doc, Format::Dot).unwrap();
+        assert!(out.contains("digraph"));
+        assert!(out.contains("Start"));
+        let doc2 = import_str(&out, Format::Dot).unwrap();
+        let mmd = export_str(&doc2, Format::Mermaid).unwrap();
+        assert!(mmd.contains("Start"));
     }
 
     #[test]

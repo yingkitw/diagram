@@ -1,0 +1,11 @@
+@startuml
+start
+:Receive request;
+if (Valid?) then (yes)
+  :Process request;
+else (no)
+  :Return error;
+endif
+:Send response;
+stop
+@enduml
