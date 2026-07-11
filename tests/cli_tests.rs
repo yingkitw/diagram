@@ -180,7 +180,7 @@ fn test_cli_sequence_info_and_render() {
     let path = path.to_str().unwrap();
     let (stdout, _, code) = run(&["info", path]);
     assert_eq!(code, 0);
-    assert!(stdout.contains("Type: sequence"), "stdout: {stdout}");
+    assert!(stdout.contains("Kind: sequence"), "stdout: {stdout}");
     assert!(stdout.contains("Participants: 2"), "stdout: {stdout}");
     let (stdout, _, code) = run(&["render", path]);
     assert_eq!(code, 0);
@@ -194,7 +194,7 @@ fn test_cli_class_info_and_render() {
     let path = path.to_str().unwrap();
     let (stdout, _, code) = run(&["info", path]);
     assert_eq!(code, 0);
-    assert!(stdout.contains("Type: class"), "stdout: {stdout}");
+    assert!(stdout.contains("Kind: class"), "stdout: {stdout}");
     assert!(stdout.contains("Classes:"), "stdout: {stdout}");
     let (stdout, _, code) = run(&["render", path]);
     assert_eq!(code, 0);
@@ -208,10 +208,48 @@ fn test_cli_gantt_info_and_render() {
     let path = path.to_str().unwrap();
     let (stdout, _, code) = run(&["info", path]);
     assert_eq!(code, 0);
-    assert!(stdout.contains("Type: gantt"), "stdout: {stdout}");
+    assert!(stdout.contains("Kind: gantt"), "stdout: {stdout}");
     assert!(stdout.contains("Tasks:"), "stdout: {stdout}");
     let (stdout, _, code) = run(&["render", path]);
     assert_eq!(code, 0);
     assert!(stdout.contains("<svg"));
     assert!(stdout.contains("Research"));
+}
+
+#[test]
+fn test_cli_ir_json_document() {
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.mmd");
+    let path = path.to_str().unwrap();
+    let (stdout, _, code) = run(&["ir", path]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("\"version\": 1"), "stdout: {stdout}");
+    assert!(stdout.contains("\"kind\": \"flowchart\""), "stdout: {stdout}");
+}
+
+#[test]
+fn test_cli_import_export_roundtrip() {
+    use std::fs;
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.mmd");
+    let json_out = std::env::temp_dir().join(format!("diagram_ir_{}.json", std::process::id()));
+    let mmd_out = std::env::temp_dir().join(format!("diagram_out_{}.mmd", std::process::id()));
+    let (_, _, code) = run(&[
+        "import",
+        src.to_str().unwrap(),
+        "--output",
+        json_out.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0);
+    let (_, _, code) = run(&[
+        "export",
+        json_out.to_str().unwrap(),
+        "--output",
+        mmd_out.to_str().unwrap(),
+        "--to",
+        "mermaid",
+    ]);
+    assert_eq!(code, 0);
+    let out = fs::read_to_string(&mmd_out).unwrap();
+    assert!(out.contains("graph"));
+    let _ = fs::remove_file(&json_out);
+    let _ = fs::remove_file(&mmd_out);
 }

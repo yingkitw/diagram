@@ -1,29 +1,13 @@
 //! Lightweight HTTP preview server for live SVG viewing.
 
-use crate::layout;
-use crate::parser;
-use crate::renderer::{self, Theme};
+use crate::renderer::Theme;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
-/// Render a `.mmd` file to SVG (flowchart, sequence, class, or gantt).
+/// Render a diagram file to SVG (Mermaid or JSON IR).
 pub fn render_file(path: &str, theme: Theme) -> Result<String, String> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read '{path}': {e}"))?;
-    if crate::sequence::is_sequence(&content) {
-        let diagram = crate::sequence::parse(&content).map_err(|e| e.to_string())?;
-        Ok(crate::sequence::render_svg(&diagram, theme))
-    } else if crate::class::is_class(&content) {
-        let diagram = crate::class::parse(&content).map_err(|e| e.to_string())?;
-        Ok(crate::class::render_svg(&diagram, theme))
-    } else if crate::gantt::is_gantt(&content) {
-        let diagram = crate::gantt::parse(&content).map_err(|e| e.to_string())?;
-        Ok(crate::gantt::render_svg(&diagram, theme))
-    } else {
-        let diagram = parser::parse(&content).map_err(|e| e.to_string())?;
-        let laid = layout::layout(&diagram);
-        Ok(renderer::render_svg_with_theme(&laid, theme))
-    }
+    let doc = crate::ir::load_path(path).map_err(|e| e.to_string())?;
+    doc.render_svg(theme)
 }
 
 /// HTML shell that polls `/svg` for live updates.

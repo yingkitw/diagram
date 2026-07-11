@@ -4,19 +4,35 @@
 
 `diagram` is a Rust CLI and MCP **diagram platform**: render, generate, analyze, and interchange diagrams via a canonical **IR**, with **Compatibility** adapters for Mermaid (today) and PlantUML/DOT/D2 (planned). See `CONTEXT.md` and `docs/adr/0001-canonical-ir-and-format-adapters.md`.
 
-**Current shipping surface:** Mermaid sources for flowchart, sequence, class, and gantt → parse/info/render/preview; flowchart generate/edit; validate/diff/merge; SVG export.
+**Current shipping surface:** Mermaid or JSON IR → `Document`; parse/ir/import/export; info/render/preview; flowchart generate/edit; validate/diff/merge; SVG export.
 
-## Platform contracts (target)
+## Canonical JSON IR (shipped)
+
+```json
+{
+  "version": 1,
+  "diagrams": [
+    {
+      "kind": "flowchart",
+      "data": { "rankdir": "TD", "nodes": [], "edges": [], ... }
+    }
+  ]
+}
+```
+
+`kind` values: `flowchart`, `sequence`, `class`, `gantt`. Multi-diagram `diagrams[]` is schema-ready; single-diagram export/render today.
+
+## Platform contracts
 
 | Capability | Contract |
 |------------|----------|
-| Import | `Format` bytes → `Document` IR |
-| Export | `Document` IR → `Format` bytes (+ optional lossiness report) |
+| Import | `Format` bytes → `Document` IR (`import`, `import_diagram`) |
+| Export | `Document` IR → `Format` bytes (`export`, `export_diagram`) |
 | Render | `Document` / `Diagram` → SVG (PNG/PDF later) |
 | Analyze | `Document` → validation issues, diff, metrics JSON |
 | Generate | MCP/CLI mutations and scaffolds against IR |
 
-Native JSON IR will be a first-class Format once the `Document` type lands.
+Supported **Formats** today: `mermaid`, `json` (native IR). Detection: JSON object prefix or `.json` / `.mmd` extension.
 
 ## Supported Mermaid Syntax (Compatibility)
 
@@ -85,7 +101,10 @@ pub struct ParseError {
 diagram <COMMAND>
 
 Commands:
-  parse        Parse and print JSON
+  parse        Parse and print canonical JSON IR
+  ir           Alias for parse (canonical JSON IR)
+  import       Import Mermaid/JSON → JSON IR file
+  export       Export diagram → Mermaid or JSON IR
   info         Show diagram summary
   render       Render as SVG (use --watch and --theme)
   mcp          Start MCP server (stdio)
@@ -113,8 +132,10 @@ All tools accept `path` (path to `.mmd` file) plus operation-specific parameters
 
 | Tool | Parameters | Returns |
 |------|-----------|---------|
-| `parse_diagram` | path | JSON diagram |
-| `get_info` | path | Summary JSON |
+| `parse_diagram` | path | Canonical JSON IR |
+| `get_info` | path | Summary JSON (kind, counts, ir_version) |
+| `import_diagram` | path, output, from? | Status JSON |
+| `export_diagram` | path, output, to? | Status JSON |
 | `render_svg` | path, theme? | SVG string |
 | `diff_diagram` | left, right | Diff JSON |
 | `merge_diagram` | left, right, output | Status JSON |
@@ -188,7 +209,9 @@ The crate exposes a public library API via `src/lib.rs`:
 pub mod class;
 pub mod cli;
 pub mod diagram;
+pub mod formats;
 pub mod gantt;
+pub mod ir;
 pub mod layout;
 pub mod mcp;
 pub mod parser;

@@ -22,6 +22,14 @@ cargo install --path .
 diagram render sample.mmd --output out.svg
 diagram preview sample.mmd
 
+# Parse canonical JSON IR
+diagram parse sample.mmd
+diagram ir sample.mmd
+
+# Import / export interchange
+diagram import sample.mmd --output sample.ir.json
+diagram export sample.ir.json --output out.mmd --to mermaid
+
 # Analyze
 diagram validate sample.mmd
 diagram info sample.mmd
@@ -37,7 +45,7 @@ diagram mcp   # agent tools over stdio
 | Format | Role today | Direction |
 |--------|------------|-----------|
 | Mermaid (`.mmd`) | Primary import + roundtrip for flowchart/sequence/class/gantt | Keep high Compatibility |
-| Native JSON IR | Partial (parse/info JSON) | Become the canonical interchange |
+| Native JSON IR | Canonical interchange (`diagram ir`, `import`/`export`) | Stable |
 | SVG | Render export | Stable |
 | PlantUML | — | Import/export adapter (planned) |
 | Graphviz DOT / D2 | — | Adapters (planned) |

@@ -10,8 +10,28 @@ use crate::{diagram as dg, parser, renderer};
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct FilePath {
-    #[schemars(description = "Path to the mermaid .mmd file")]
+    #[schemars(description = "Path to a diagram file (Mermaid or JSON IR)")]
     path: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ImportParams {
+    #[schemars(description = "Source diagram file path")]
+    path: String,
+    #[schemars(description = "Output JSON IR file path")]
+    output: String,
+    #[schemars(description = "Source format: mermaid or json (auto-detect if omitted)")]
+    from: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ExportParams {
+    #[schemars(description = "Source diagram file path (Mermaid or JSON IR)")]
+    path: String,
+    #[schemars(description = "Output file path")]
+    output: String,
+    #[schemars(description = "Target format: mermaid or json (auto-detect if omitted)")]
+    to: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -190,136 +210,86 @@ pub struct DiagramServer;
 
 #[tool_router]
 impl DiagramServer {
-    #[tool(description = "Parse a diagram file (Mermaid today) and return its IR as JSON")]
+    #[tool(description = "Parse a diagram file and return canonical JSON IR")]
     async fn parse_diagram(&self, Parameters(params): Parameters<FilePath>) -> CallToolResult {
-        let content = match std::fs::read_to_string(&params.path) {
-            Ok(c) => c,
-            Err(e) => {
-                return CallToolResult::error(vec![ContentBlock::text(format!(
-                    "Failed to read file '{}': {}",
-                    params.path, e
-                ))]);
-            }
-        };
-        if crate::sequence::is_sequence(&content) {
-            match crate::sequence::parse(&content) {
-                Ok(diagram) => {
-                    let json = serde_json::to_string_pretty(&diagram).unwrap_or_default();
-                    CallToolResult::success(vec![ContentBlock::text(json)])
-                }
+        match crate::ir::load_path(&params.path) {
+            Ok(doc) => match doc.to_json() {
+                Ok(json) => CallToolResult::success(vec![ContentBlock::text(json)]),
                 Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
-            }
-        } else if crate::class::is_class(&content) {
-            match crate::class::parse(&content) {
-                Ok(diagram) => {
-                    let json = serde_json::to_string_pretty(&diagram).unwrap_or_default();
-                    CallToolResult::success(vec![ContentBlock::text(json)])
-                }
-                Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
-            }
-        } else if crate::gantt::is_gantt(&content) {
-            match crate::gantt::parse(&content) {
-                Ok(diagram) => {
-                    let json = serde_json::to_string_pretty(&diagram).unwrap_or_default();
-                    CallToolResult::success(vec![ContentBlock::text(json)])
-                }
-                Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
-            }
-        } else {
-            match read_file(&params.path) {
-                Ok(diagram) => {
-                    let json = serde_json::to_string_pretty(&diagram).unwrap_or_default();
-                    CallToolResult::success(vec![ContentBlock::text(json)])
-                }
-                Err(e) => e,
-            }
+            },
+            Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
         }
     }
 
-    #[tool(description = "Get diagram summary (node count, edge count, type)")]
+    #[tool(description = "Get diagram summary (kind, counts, IR version)")]
     async fn get_info(&self, Parameters(params): Parameters<FilePath>) -> CallToolResult {
-        let content = match std::fs::read_to_string(&params.path) {
-            Ok(c) => c,
-            Err(e) => {
-                return CallToolResult::error(vec![ContentBlock::text(format!(
-                    "Failed to read file '{}': {}",
-                    params.path, e
-                ))]);
+        match crate::ir::load_path(&params.path) {
+            Ok(doc) => {
+                let summary = crate::ir::info_json(&params.path, &doc);
+                CallToolResult::success(vec![ContentBlock::text(summary.to_string())])
             }
-        };
-        if crate::sequence::is_sequence(&content) {
-            return match crate::sequence::parse(&content) {
-                Ok(diagram) => {
-                    let summary = serde_json::json!({
-                        "path": params.path,
-                        "type": "sequence",
-                        "participants": diagram.participants.len(),
-                        "messages": diagram.messages.len(),
-                    });
-                    CallToolResult::success(vec![ContentBlock::text(summary.to_string())])
+            Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
+        }
+    }
+
+    #[tool(description = "Import a diagram into canonical JSON IR")]
+    async fn import_diagram(&self, Parameters(params): Parameters<ImportParams>) -> CallToolResult {
+        let from = match params.from.as_deref() {
+            Some(s) => match crate::formats::Format::parse(s) {
+                Some(f) => Some(f),
+                None => {
+                    return CallToolResult::error(vec![ContentBlock::text(format!(
+                        "Invalid from format '{s}'. Use: mermaid, json"
+                    ))]);
                 }
-                Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
-            };
-        }
-        if crate::class::is_class(&content) {
-            return match crate::class::parse(&content) {
-                Ok(diagram) => {
-                    let summary = serde_json::json!({
-                        "path": params.path,
-                        "type": "class",
-                        "classes": diagram.classes.len(),
-                        "relations": diagram.relations.len(),
-                    });
-                    CallToolResult::success(vec![ContentBlock::text(summary.to_string())])
-                }
-                Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
-            };
-        }
-        if crate::gantt::is_gantt(&content) {
-            return match crate::gantt::parse(&content) {
-                Ok(diagram) => {
-                    let summary = serde_json::json!({
-                        "path": params.path,
-                        "type": "gantt",
-                        "title": diagram.title,
-                        "tasks": diagram.tasks.len(),
-                    });
-                    CallToolResult::success(vec![ContentBlock::text(summary.to_string())])
-                }
-                Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
-            };
-        }
-        let diagram = match read_file(&params.path) {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let mut shapes = [0usize; 6];
-        for n in &diagram.nodes {
-            shapes[match n.shape {
-                dg::NodeShape::Rect => 0,
-                dg::NodeShape::Diamond => 1,
-                dg::NodeShape::Stadium => 2,
-                dg::NodeShape::Hexagon => 3,
-                dg::NodeShape::Cylinder => 4,
-                dg::NodeShape::Circle => 5,
-            }] += 1;
-        }
-        let summary = serde_json::json!({
-            "path": params.path,
-            "type": "flowchart",
-            "direction": diagram.rankdir,
-            "nodes": diagram.nodes.len(),
-            "edges": diagram.edges.len(),
-            "shapes": {
-                "rect": shapes[0],
-                "diamond": shapes[1],
-                "stadium": shapes[2],
-                "hexagon": shapes[3],
-                "cylinder": shapes[4],
-                "circle": shapes[5],
             },
-        });
-        CallToolResult::success(vec![ContentBlock::text(summary.to_string())])
+            None => None,
+        };
+        let (doc, fmt) = match crate::formats::import_path(&params.path, from) {
+            Ok(v) => v,
+            Err(e) => return CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
+        };
+        match crate::formats::export_path(&doc, &params.output, Some(crate::formats::Format::JsonIr)) {
+            Ok(_) => CallToolResult::success(vec![ContentBlock::text(
+                serde_json::json!({
+                    "status": "ok",
+                    "from": fmt.as_str(),
+                    "output": params.output,
+                })
+                .to_string(),
+            )]),
+            Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
+        }
+    }
+
+    #[tool(description = "Export a diagram to Mermaid or JSON IR")]
+    async fn export_diagram(&self, Parameters(params): Parameters<ExportParams>) -> CallToolResult {
+        let to = match params.to.as_deref() {
+            Some(s) => match crate::formats::Format::parse(s) {
+                Some(f) => Some(f),
+                None => {
+                    return CallToolResult::error(vec![ContentBlock::text(format!(
+                        "Invalid to format '{s}'. Use: mermaid, json"
+                    ))]);
+                }
+            },
+            None => None,
+        };
+        let (doc, _) = match crate::formats::import_path(&params.path, None) {
+            Ok(v) => v,
+            Err(e) => return CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
+        };
+        match crate::formats::export_path(&doc, &params.output, to) {
+            Ok(fmt) => CallToolResult::success(vec![ContentBlock::text(
+                serde_json::json!({
+                    "status": "ok",
+                    "to": fmt.as_str(),
+                    "output": params.output,
+                })
+                .to_string(),
+            )]),
+            Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
+        }
     }
 
     #[tool(description = "Render diagram as SVG (flowchart, sequence, class, or gantt)")]

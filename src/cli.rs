@@ -4,9 +4,32 @@ use crate::renderer::Theme;
 
 #[derive(Parser)]
 pub enum Cli {
-    #[command(about = "Parse a diagram file and print as JSON")]
+    #[command(about = "Parse a diagram file and print canonical JSON IR")]
     Parse {
         path: String,
+    },
+
+    #[command(about = "Print canonical JSON IR (alias for parse)")]
+    Ir {
+        path: String,
+    },
+
+    #[command(about = "Import a diagram into canonical JSON IR")]
+    Import {
+        path: String,
+        #[arg(long, short, help = "Output JSON IR file")]
+        output: String,
+        #[arg(long, help = "Source format: mermaid or json (auto-detect if omitted)")]
+        from: Option<String>,
+    },
+
+    #[command(about = "Export a diagram to Mermaid or JSON IR")]
+    Export {
+        path: String,
+        #[arg(long, short, help = "Output file path")]
+        output: String,
+        #[arg(long, help = "Target format: mermaid or json (auto-detect if omitted)")]
+        to: Option<String>,
     },
 
     #[command(about = "Show diagram summary (node count, edge count, direction)")]
@@ -157,7 +180,10 @@ pub enum Cli {
 impl Cli {
     pub async fn run(&self) -> anyhow::Result<()> {
         match self {
-            Self::Parse { path } => cmd_parse(path),
+            Self::Parse { path } => cmd_ir(path),
+            Self::Ir { path } => cmd_ir(path),
+            Self::Import { path, output, from } => cmd_import(path, output, from.as_deref()),
+            Self::Export { path, output, to } => cmd_export(path, output, to.as_deref()),
             Self::Info { path } => cmd_info(path),
             Self::Render { path, output, watch, theme } => {
                 let theme = match theme.as_deref() {
@@ -211,75 +237,42 @@ fn write_diagram(path: &str, diagram: &dg::Diagram) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn cmd_parse(path: &str) -> anyhow::Result<()> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| anyhow::anyhow!("Failed to read '{}': {}", path, e))?;
-    if crate::sequence::is_sequence(&content) {
-        let diagram = crate::sequence::parse(&content).map_err(|e| anyhow::anyhow!("{e}"))?;
-        println!("{}", serde_json::to_string_pretty(&diagram)?);
-    } else if crate::class::is_class(&content) {
-        let diagram = crate::class::parse(&content).map_err(|e| anyhow::anyhow!("{e}"))?;
-        println!("{}", serde_json::to_string_pretty(&diagram)?);
-    } else if crate::gantt::is_gantt(&content) {
-        let diagram = crate::gantt::parse(&content).map_err(|e| anyhow::anyhow!("{e}"))?;
-        println!("{}", serde_json::to_string_pretty(&diagram)?);
-    } else {
-        let diagram = parser::parse(&content).map_err(|e| anyhow::anyhow!("{e}"))?;
-        println!("{}", serde_json::to_string_pretty(&diagram)?);
-    }
+fn cmd_ir(path: &str) -> anyhow::Result<()> {
+    let doc = crate::ir::load_path(path).map_err(|e| anyhow::anyhow!("{e}"))?;
+    println!("{}", doc.to_json()?);
+    Ok(())
+}
+
+fn parse_format(s: &str) -> anyhow::Result<crate::formats::Format> {
+    crate::formats::Format::parse(s)
+        .ok_or_else(|| anyhow::anyhow!("Invalid format '{s}'. Use: mermaid, json"))
+}
+
+fn cmd_import(path: &str, output: &str, from: Option<&str>) -> anyhow::Result<()> {
+    let from_fmt = from.map(parse_format).transpose()?;
+    let (doc, fmt) = crate::formats::import_path(path, from_fmt)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    crate::formats::export_path(&doc, output, Some(crate::formats::Format::JsonIr))
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    println!("Imported {fmt:?} from {path} → {output}");
+    Ok(())
+}
+
+fn cmd_export(path: &str, output: &str, to: Option<&str>) -> anyhow::Result<()> {
+    let to_fmt = to.map(parse_format).transpose()?;
+    let (doc, _) = crate::formats::import_path(path, None)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let fmt = crate::formats::export_path(&doc, output, to_fmt)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    println!("Exported {fmt:?} to {output}");
     Ok(())
 }
 
 fn cmd_info(path: &str) -> anyhow::Result<()> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| anyhow::anyhow!("Failed to read '{}': {}", path, e))?;
-    if crate::sequence::is_sequence(&content) {
-        let diagram = crate::sequence::parse(&content).map_err(|e| anyhow::anyhow!("{e}"))?;
-        println!("File: {path}");
-        println!("Type: sequence");
-        println!("Participants: {}", diagram.participants.len());
-        println!("Messages: {}", diagram.messages.len());
-        return Ok(());
+    let doc = crate::ir::load_path(path).map_err(|e| anyhow::anyhow!("{e}"))?;
+    for line in crate::ir::info_lines(path, &doc) {
+        println!("{line}");
     }
-    if crate::class::is_class(&content) {
-        let diagram = crate::class::parse(&content).map_err(|e| anyhow::anyhow!("{e}"))?;
-        println!("File: {path}");
-        println!("Type: class");
-        println!("Classes: {}", diagram.classes.len());
-        println!("Relations: {}", diagram.relations.len());
-        return Ok(());
-    }
-    if crate::gantt::is_gantt(&content) {
-        let diagram = crate::gantt::parse(&content).map_err(|e| anyhow::anyhow!("{e}"))?;
-        println!("File: {path}");
-        println!("Type: gantt");
-        println!("Title: {}", diagram.title);
-        println!("Tasks: {}", diagram.tasks.len());
-        return Ok(());
-    }
-    let diagram = parser::parse(&content).map_err(|e| anyhow::anyhow!("{e}"))?;
-    let mut shapes = [0usize; 6];
-    for n in &diagram.nodes {
-        shapes[match n.shape {
-            dg::NodeShape::Rect => 0,
-            dg::NodeShape::Diamond => 1,
-            dg::NodeShape::Stadium => 2,
-            dg::NodeShape::Hexagon => 3,
-            dg::NodeShape::Cylinder => 4,
-            dg::NodeShape::Circle => 5,
-        }] += 1;
-    }
-    println!("File: {path}");
-    println!("Type: flowchart");
-    println!("Direction: {}", diagram.rankdir);
-    println!("Nodes: {}", diagram.nodes.len());
-    println!("  rect:     {}", shapes[0]);
-    println!("  diamond:  {}", shapes[1]);
-    println!("  stadium:  {}", shapes[2]);
-    println!("  hexagon:  {}", shapes[3]);
-    println!("  cylinder: {}", shapes[4]);
-    println!("  circle:   {}", shapes[5]);
-    println!("Edges: {}", diagram.edges.len());
     Ok(())
 }
 

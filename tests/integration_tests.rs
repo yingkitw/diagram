@@ -422,6 +422,18 @@ fn test_gantt_example_parse_and_render() {
 }
 
 #[test]
+fn test_render_json_ir_file() {
+    let mmd_path = examples_dir().join("simple-flowchart.mmd");
+    let doc = diagram::ir::load_path(mmd_path.to_str().unwrap()).unwrap();
+    let json_path = std::env::temp_dir().join(format!("diagram_render_ir_{}.json", std::process::id()));
+    std::fs::write(&json_path, doc.to_json().unwrap()).unwrap();
+    let svg = diagram::preview::render_file(json_path.to_str().unwrap(), diagram::renderer::Theme::Dark)
+        .unwrap();
+    assert!(svg.contains("<svg"));
+    let _ = std::fs::remove_file(json_path);
+}
+
+#[test]
 fn test_preview_renders_gantt() {
     let path = examples_dir().join("gantt.mmd");
     let svg = diagram::preview::render_file(

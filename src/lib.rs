@@ -1,7 +1,9 @@
 pub mod class;
 pub mod cli;
 pub mod diagram;
+pub mod formats;
 pub mod gantt;
+pub mod ir;
 pub mod layout;
 pub mod mcp;
 pub mod parser;

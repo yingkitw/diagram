@@ -34,21 +34,23 @@ main.rs
   ├── sequence.rs — Mermaid sequence → sequence IR → SVG
   ├── class.rs    — Mermaid class → class IR → SVG
   ├── gantt.rs    — Mermaid gantt → gantt IR → SVG
+  ├── ir.rs       — canonical Document / Diagram / Kind
+  ├── formats.rs  — format detect, import, export
   ├── layout.rs   — flowchart layered layout
   └── renderer.rs — flowchart Layout → SVG
 ```
 
-Detection today is Mermaid-header based (`graph` / `sequenceDiagram` / `classDiagram` / `gantt`). Kind-specific modules each own parse + (for non-flowchart) layout/render. Flowchart mutating CLI/MCP ops write Mermaid back via `to_mermaid()`.
+Detection today: `formats::detect` on path/content → Mermaid or JSON IR → `ir::Document`. Kind-specific Mermaid parsers feed `ir::Diagram` variants. `import`/`export` and MCP `import_diagram`/`export_diagram` use `formats.rs`.
 
 ## Planned module boundaries
 
-| Area | Responsibility |
-|------|----------------|
-| `ir` | Canonical `Document` / `Diagram` / `Kind`; JSON schema |
-| `formats::*` | Adapters: Mermaid, PlantUML, DOT, D2, … |
-| `render` | Kind-aware layout + SVG/PNG/PDF backends |
-| `analyze` | Validate, diff, merge, metrics (IR in → report out) |
-| `generate` | CLI/MCP mutations and templates against IR |
+| Area | Responsibility | Status |
+|------|----------------|--------|
+| `ir` | Canonical `Document` / `Diagram` / `Kind`; JSON | Shipped |
+| `formats` | Adapters: Mermaid, JSON IR; PlantUML, DOT later | Partial |
+| `render` | Kind-aware layout + SVG/PNG/PDF backends | Partial (SVG) |
+| `analyze` | Validate, diff, merge, metrics (IR in → report out) | Partial |
+| `generate` | CLI/MCP mutations and templates against IR | Partial |
 
 Migrate existing `parser` / `sequence` / `class` / `gantt` into `formats::mermaid` + kind IR types without breaking CLI behavior.
 
