@@ -37,10 +37,10 @@ pub enum Cli {
         path: String,
     },
 
-    #[command(about = "Render diagram as SVG")]
+    #[command(about = "Render diagram as SVG or PNG (format from --output extension)")]
     Render {
         path: String,
-        #[arg(long, help = "Output SVG file path (prints to stdout if not set)")]
+        #[arg(long, help = "Output file path: .svg or .png (prints SVG to stdout if not set)")]
         output: Option<String>,
         #[arg(long, help = "Watch file for changes and re-render automatically")]
         watch: bool,
@@ -292,10 +292,15 @@ fn cmd_info(path: &str) -> anyhow::Result<()> {
 }
 
 fn cmd_render(path: &str, output: Option<&str>, theme: Theme) -> anyhow::Result<()> {
-    let svg = crate::preview::render_file(path, theme).map_err(|e| anyhow::anyhow!("{e}"))?;
     match output {
-        Some(out_path) => std::fs::write(out_path, &svg)?,
-        None => println!("{svg}"),
+        Some(out_path) => {
+            crate::preview::write_render_output(out_path, path, theme)
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+        }
+        None => {
+            let svg = crate::preview::render_file(path, theme).map_err(|e| anyhow::anyhow!("{e}"))?;
+            println!("{svg}");
+        }
     }
     Ok(())
 }

@@ -4,7 +4,7 @@ A native Rust platform for **diagram rendering, generation, analysis, and interc
 
 | Pillar | What it means |
 |--------|----------------|
-| **Render** | Fast, Chromium-free layout → SVG (PNG/PDF planned) |
+| **Render** | Fast, Chromium-free layout → SVG and PNG (PDF planned) |
 | **Generate** | Structured create/edit via CLI + MCP (agents and scripts) |
 | **Analyze** | Validate, diff, merge, and structural metrics on the IR |
 | **Interchange** | Import/export across formats via a canonical IR |
@@ -19,6 +19,7 @@ Today’s parsers speak Mermaid (flowchart, sequence, class, gantt). The roadmap
 cargo install --path .
 
 # Render (auto-detects kind)
+diagram render sample.mmd --output out.png
 diagram render sample.mmd --output out.svg
 diagram preview sample.mmd
 
@@ -52,7 +53,8 @@ diagram mcp   # agent tools over stdio
 | SVG | Render export | Stable |
 | PlantUML (`.puml`) | Sequence import → sequence IR (MVP) | Class, activity, export |
 | Graphviz DOT (`.dot`) | Import → flowchart IR (digraph subset) | Expand subset; export later |
-| PNG / PDF | — | Render export (planned) |
+| PNG | Render export (`.png` via `diagram render`) | Stable |
+| PDF | — | Render export (planned) |
 
 ## CLI (current)
 

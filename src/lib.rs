@@ -9,6 +9,7 @@ pub mod ir;
 pub mod layout;
 pub mod mcp;
 pub mod parser;
+pub mod png;
 pub mod preview;
 pub mod renderer;
 pub mod sequence;

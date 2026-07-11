@@ -10,6 +10,18 @@ pub fn render_file(path: &str, theme: Theme) -> Result<String, String> {
     doc.render_svg(theme)
 }
 
+/// Write rendered output to a path (`.png` → PNG, otherwise SVG).
+pub fn write_render_output(path: &str, diagram_path: &str, theme: Theme) -> Result<(), String> {
+    let svg = render_file(diagram_path, theme)?;
+    if crate::png::output_is_png(path) {
+        let png = crate::png::svg_to_png(&svg)?;
+        std::fs::write(path, png).map_err(|e| format!("Failed to write '{path}': {e}"))?;
+    } else {
+        std::fs::write(path, svg).map_err(|e| format!("Failed to write '{path}': {e}"))?;
+    }
+    Ok(())
+}
+
 /// HTML shell that polls `/svg` for live updates.
 pub fn preview_html(file_name: &str, theme: Theme) -> String {
     let bg = match theme {

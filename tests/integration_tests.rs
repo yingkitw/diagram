@@ -449,6 +449,22 @@ fn test_dot_example_parse_and_render() {
 }
 
 #[test]
+fn test_render_flowchart_png_file() {
+    let path = examples_dir().join("simple-flowchart.mmd");
+    let out = std::env::temp_dir().join(format!("diagram_int_png_{}.png", std::process::id()));
+    diagram::preview::write_render_output(
+        out.to_str().unwrap(),
+        path.to_str().unwrap(),
+        diagram::renderer::Theme::Dark,
+    )
+    .unwrap();
+    let bytes = std::fs::read(&out).unwrap();
+    assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+    assert!(bytes.len() > 500);
+    let _ = std::fs::remove_file(&out);
+}
+
+#[test]
 fn test_render_json_ir_file() {
     let mmd_path = examples_dir().join("simple-flowchart.mmd");
     let doc = diagram::ir::load_path(mmd_path.to_str().unwrap()).unwrap();

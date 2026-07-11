@@ -23,6 +23,16 @@ struct CreateParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct RenderPngParams {
+    #[schemars(description = "Path to the diagram file")]
+    path: String,
+    #[schemars(description = "Output PNG file path")]
+    output: String,
+    #[schemars(description = "Theme: dark or light")]
+    theme: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct ImportParams {
     #[schemars(description = "Source diagram file path")]
     path: String,
@@ -308,6 +318,25 @@ impl DiagramServer {
         };
         match crate::preview::render_file(&params.path, theme) {
             Ok(svg) => CallToolResult::success(vec![ContentBlock::text(svg)]),
+            Err(e) => CallToolResult::error(vec![ContentBlock::text(e)]),
+        }
+    }
+
+    #[tool(description = "Render diagram to a PNG file")]
+    async fn render_png(&self, Parameters(params): Parameters<RenderPngParams>) -> CallToolResult {
+        let theme = match params.theme.as_deref() {
+            Some("light") => renderer::Theme::Light,
+            _ => renderer::Theme::Dark,
+        };
+        match crate::preview::write_render_output(&params.output, &params.path, theme) {
+            Ok(()) => CallToolResult::success(vec![ContentBlock::text(
+                serde_json::json!({
+                    "status": "ok",
+                    "output": params.output,
+                    "format": "png",
+                })
+                .to_string(),
+            )]),
             Err(e) => CallToolResult::error(vec![ContentBlock::text(e)]),
         }
     }

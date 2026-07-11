@@ -175,6 +175,22 @@ fn test_cli_preview_help() {
 }
 
 #[test]
+fn test_cli_render_png() {
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.mmd");
+    let out = std::env::temp_dir().join(format!("diagram_render_{}.png", std::process::id()));
+    let (_, _, code) = run(&[
+        "render",
+        src.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0);
+    let bytes = std::fs::read(&out).unwrap();
+    assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+    let _ = std::fs::remove_file(&out);
+}
+
+#[test]
 fn test_cli_sequence_info_and_render() {
     let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/sequence.mmd");
     let path = path.to_str().unwrap();

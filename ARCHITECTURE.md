@@ -28,7 +28,8 @@
 main.rs
   ├── cli.rs      — clap CLI dispatch
   ├── mcp.rs      — MCP tools (stdio)
-  ├── preview.rs  — localhost live SVG preview
+  ├── preview.rs  — localhost live SVG preview; render to SVG/PNG
+  ├── png.rs      — SVG → PNG via resvg
   ├── diagram.rs  — flowchart IR (Node, Edge, Subgraph, styles)
   ├── parser.rs   — Mermaid flowchart → flowchart IR
   ├── sequence.rs — Mermaid sequence → sequence IR → SVG
@@ -50,7 +51,7 @@ Detection today: `formats::detect` on path/content → Mermaid or JSON IR → `i
 |------|----------------|--------|
 | `ir` | Canonical `Document` / `Diagram` / `Kind`; JSON | Shipped |
 | `formats` | Adapters: Mermaid, JSON IR, DOT, PlantUML (sequence) | Partial |
-| `render` | Kind-aware layout + SVG/PNG/PDF backends | Partial (SVG) |
+| `render` | Kind-aware layout + SVG/PNG backends | Partial (SVG + PNG) |
 | `analyze` | Validate, diff, merge, metrics (IR in → report out) | Partial (metrics shipped) |
 | `generate` | CLI/MCP mutations and templates against IR | Partial (create scaffolds) |
 

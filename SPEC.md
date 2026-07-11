@@ -106,7 +106,7 @@ Commands:
   import       Import Mermaid/DOT/PlantUML/JSON → JSON IR file
   export       Export diagram → Mermaid or JSON IR
   info         Show diagram summary
-  render       Render as SVG (use --watch and --theme)
+  render       Render as SVG or PNG (use --output extension, --watch, --theme)
   mcp          Start MCP server (stdio)
   add-node     Add a node
   remove-node  Remove a node
@@ -141,6 +141,7 @@ All tools accept `path` (path to `.mmd` file) plus operation-specific parameters
 | `metrics_diagram` | path | Metrics JSON |
 | `create_diagram` | kind, output | Status JSON |
 | `render_svg` | path, theme? | SVG string |
+| `render_png` | path, output, theme? | Status JSON |
 | `diff_diagram` | left, right | Diff JSON |
 | `merge_diagram` | left, right, output | Status JSON |
 | `add_node` | path, id, text, shape? | Status JSON |
@@ -221,6 +222,7 @@ pub mod ir;
 pub mod layout;
 pub mod mcp;
 pub mod parser;
+pub mod png;
 pub mod preview;
 pub mod renderer;
 pub mod sequence;
