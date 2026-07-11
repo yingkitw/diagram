@@ -247,7 +247,7 @@ impl DiagramServer {
                 Some(f) => Some(f),
                 None => {
                     return CallToolResult::error(vec![ContentBlock::text(format!(
-                        "Invalid from format '{s}'. Use: mermaid, json"
+                        "Invalid from format '{s}'. Use: mermaid, json, dot"
                     ))]);
                 }
             },

@@ -27,7 +27,7 @@ diagram parse sample.mmd
 diagram ir sample.mmd
 
 # Import / export interchange
-diagram import sample.mmd --output sample.ir.json
+diagram import sample.dot --output sample.ir.json --from dot
 diagram export sample.ir.json --output out.mmd --to mermaid
 
 # Analyze
@@ -51,7 +51,7 @@ diagram mcp   # agent tools over stdio
 | Native JSON IR | Canonical interchange (`diagram ir`, `import`/`export`) | Stable |
 | SVG | Render export | Stable |
 | PlantUML | — | Import/export adapter (planned) |
-| Graphviz DOT / D2 | — | Adapters (planned) |
+| Graphviz DOT (`.dot`) | Import → flowchart IR (digraph subset) | Expand subset; export later |
 | PNG / PDF | — | Render export (planned) |
 
 ## CLI (current)

@@ -1,0 +1,15 @@
+digraph flow {
+    rankdir=TB;
+    // Simple decision flow (Graphviz DOT subset)
+    Start [label="Start", shape=box];
+    Check [label="Is it working?", shape=diamond];
+    Great [label="Great!", shape=box];
+    Debug [label="Debug", shape=box];
+    End [label="End", shape=box];
+
+    Start -> Check;
+    Check -> Great [label="Yes"];
+    Check -> Debug [label="No"];
+    Debug -> Check;
+    Great -> End;
+}

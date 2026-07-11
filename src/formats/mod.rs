@@ -1,5 +1,6 @@
 //! Format detection and import/export adapters around the canonical IR.
 
+pub mod dot;
 pub mod mermaid;
 
 use crate::ir::{Document, IrError};
@@ -9,6 +10,7 @@ use crate::ir::{Document, IrError};
 pub enum Format {
     Mermaid,
     JsonIr,
+    Dot,
 }
 
 impl Format {
@@ -16,6 +18,7 @@ impl Format {
         match s.to_lowercase().as_str() {
             "mermaid" | "mmd" => Some(Self::Mermaid),
             "json" | "ir" | "json-ir" | "json_ir" => Some(Self::JsonIr),
+            "dot" | "graphviz" | "gv" => Some(Self::Dot),
             _ => None,
         }
     }
@@ -24,6 +27,7 @@ impl Format {
         match self {
             Self::Mermaid => "mermaid",
             Self::JsonIr => "json",
+            Self::Dot => "dot",
         }
     }
 }
@@ -34,10 +38,16 @@ pub fn detect(source: &str, path: Option<&str>) -> Format {
     if trimmed.starts_with('{') {
         return Format::JsonIr;
     }
+    if dot::is_dot(source) {
+        return Format::Dot;
+    }
     if let Some(p) = path {
         let lower = p.to_lowercase();
         if lower.ends_with(".json") {
             return Format::JsonIr;
+        }
+        if lower.ends_with(".dot") || lower.ends_with(".gv") {
+            return Format::Dot;
         }
         if lower.ends_with(".mmd") || lower.ends_with(".mermaid") {
             return Format::Mermaid;
@@ -52,6 +62,7 @@ pub fn import_str(source: &str, format: Format) -> Result<Document, IrError> {
         Format::Mermaid => mermaid::parse_to_document(source),
         Format::JsonIr => Document::from_json(source)
             .map_err(|e| IrError::from(format!("invalid JSON IR: {e}"))),
+        Format::Dot => dot::parse_to_document(source),
     }
 }
 
@@ -62,6 +73,7 @@ pub fn export_str(doc: &Document, format: Format) -> Result<String, IrError> {
         Format::JsonIr => doc
             .to_json()
             .map_err(|e| IrError::from(format!("JSON serialize failed: {e}"))),
+        Format::Dot => Err(IrError::from("DOT export is not supported yet")),
     }
 }
 
@@ -101,6 +113,20 @@ mod tests {
     fn detect_extension() {
         assert_eq!(detect("graph TD\n", Some("x.json")), Format::JsonIr);
         assert_eq!(detect("graph TD\n", Some("x.mmd")), Format::Mermaid);
+    }
+
+    #[test]
+    fn detect_dot_extension() {
+        assert_eq!(detect("digraph G {}", Some("x.dot")), Format::Dot);
+    }
+
+    #[test]
+    fn dot_import_to_mermaid() {
+        let src = r#"digraph G { A [label="Start"] -> B [label="End"]; }"#;
+        let doc = import_str(src, Format::Dot).unwrap();
+        let out = export_str(&doc, Format::Mermaid).unwrap();
+        assert!(out.contains("Start"));
+        assert!(out.contains("B"));
     }
 
     #[test]

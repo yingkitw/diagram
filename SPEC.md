@@ -103,7 +103,7 @@ diagram <COMMAND>
 Commands:
   parse        Parse and print canonical JSON IR
   ir           Alias for parse (canonical JSON IR)
-  import       Import Mermaid/JSON → JSON IR file
+  import       Import Mermaid/DOT/JSON → JSON IR file
   export       Export diagram → Mermaid or JSON IR
   info         Show diagram summary
   render       Render as SVG (use --watch and --theme)

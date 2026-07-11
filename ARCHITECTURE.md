@@ -35,7 +35,7 @@ main.rs
   ├── class.rs    — Mermaid class → class IR → SVG
   ├── gantt.rs    — Mermaid gantt → gantt IR → SVG
   ├── ir.rs       — canonical Document / Diagram / Kind
-  ├── formats/    — format detect, import, export; `mermaid` adapter
+  ├── formats/    — format detect, import, export; `mermaid` + `dot` adapters
   ├── analyze.rs  — structural metrics on IR
   ├── generate.rs — kind-aware scaffolds (create)
   ├── layout.rs   — flowchart layered layout
@@ -49,7 +49,7 @@ Detection today: `formats::detect` on path/content → Mermaid or JSON IR → `i
 | Area | Responsibility | Status |
 |------|----------------|--------|
 | `ir` | Canonical `Document` / `Diagram` / `Kind`; JSON | Shipped |
-| `formats` | Adapters: Mermaid, JSON IR; PlantUML, DOT later | Partial (Mermaid folded) |
+| `formats` | Adapters: Mermaid, JSON IR, DOT import; PlantUML later | Partial |
 | `render` | Kind-aware layout + SVG/PNG/PDF backends | Partial (SVG) |
 | `analyze` | Validate, diff, merge, metrics (IR in → report out) | Partial (metrics shipped) |
 | `generate` | CLI/MCP mutations and templates against IR | Partial (create scaffolds) |
