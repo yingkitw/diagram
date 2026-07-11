@@ -2,7 +2,7 @@
 
 ## Overview
 
-`diagram` is a CLI tool and MCP server for manipulating Mermaid flowchart diagrams. It parses `.mmd` files into an in-memory graph model, allows inspection and modification, and can render to SVG.
+`diagram` is a CLI tool and MCP server for manipulating Mermaid diagrams. It parses `.mmd` files into an in-memory graph model, allows inspection and modification, and can render to SVG. Flowcharts and sequence diagrams (MVP) are supported.
 
 ## Supported Mermaid Syntax
 
@@ -23,6 +23,15 @@
 - **Subgraphs**: `subgraph Name ... end`
 - **Styling**: `style NodeId fill:#f9f`, `classDef name fill:#bbf`, `class A,B name`
 - **Comments**: `%% line comment`
+
+### Sequence diagrams (MVP)
+
+- **Header**: `sequenceDiagram`
+- **Participants**: `participant A`, `participant A as Alice`, `actor A`
+- **Messages**: `A->>B: text` (solid), `A-->>B: text` (dashed)
+- Implicit participants created from message endpoints
+- Rendered with lifelines, header/footer boxes, and labeled arrows
+- Not yet: notes, loops, alt/opt, activations, self-messages
 
 ## Error Handling
 
@@ -59,6 +68,7 @@ Commands:
   validate     Validate diagram
   diff         Compare two diagrams
   merge        Merge two diagrams
+  preview      Live browser SVG preview
 ```
 
 ## MCP Tools
@@ -144,10 +154,24 @@ pub mod diagram;
 pub mod layout;
 pub mod mcp;
 pub mod parser;
+pub mod preview;
 pub mod renderer;
+pub mod sequence;
 ```
 
 All core modules are importable for programmatic use or integration tests.
+
+## Preview Server
+
+`diagram preview <file.mmd> [--port 3030] [--theme dark|light]` starts a localhost HTTP server:
+
+| Path | Response |
+|------|----------|
+| `/` | HTML page that polls `/svg` every second |
+| `/svg` | Current SVG render of the file |
+| `/health` | `ok` |
+
+No extra HTTP dependencies — uses `tokio::net::TcpListener` with a minimal HTTP/1.1 responder.
 
 ## Rendering
 

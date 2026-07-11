@@ -40,11 +40,26 @@
 
 ## Longer-term
 
-- [ ] Web UI (wasm-based preview or lightweight server)
-- [ ] Support for sequence diagrams
+- [x] Web UI — live browser preview (`diagram preview`)
+- [x] Interactive SVG output (links, tooltips, click events)
+- [x] Support for sequence diagrams (MVP: participants, `->>` / `-->>`, SVG)
 - [ ] Support for class diagrams
 - [ ] Support for Gantt charts
 - [ ] VSCode extension via MCP
 - [ ] Plugin system for custom shape renderers
-- [x] Interactive SVG output (links, tooltips, click events)
 - [ ] Multi-diagram file support (multiple graphs per `.mmd` file)
+- [ ] PNG/PDF export (parity with mermaid-cli / Kroki)
+- [ ] Markdown in-place render (find ```mermaid blocks, write SVGs)
+- [ ] State / ER diagram types (common Mermaid coverage gap vs mermaid.js)
+- [ ] Sequence diagram extras (notes, loops, alt/opt, activations)
+
+## Brainstorming (competitive)
+
+Gaps vs mermaid-cli, Kroki, and mermaid.js that would strengthen this crate:
+
+- Broader diagram-type coverage (sequence, class, state, ER, Gantt) — largest parity gap
+- Multi-diagram / markdown pipeline support for docs CI
+- Raster export without Chromium (keep the native-binary advantage)
+- VS Code / editor UX beyond raw MCP stdio
+- Optional wasm embed for browser preview without a local server
+

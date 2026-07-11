@@ -1,5 +1,5 @@
 use clap::Parser;
-use crate::{diagram as dg, layout, parser, renderer};
+use crate::{diagram as dg, parser};
 use crate::renderer::Theme;
 
 #[derive(Parser)]
@@ -143,6 +143,15 @@ pub enum Cli {
         #[arg(long, help = "Output file path")]
         output: String,
     },
+
+    #[command(about = "Serve a live SVG preview in the browser")]
+    Preview {
+        path: String,
+        #[arg(long, default_value = "3030", help = "Port to listen on")]
+        port: u16,
+        #[arg(long, help = "Theme: dark or light")]
+        theme: Option<String>,
+    },
 }
 
 impl Cli {
@@ -177,6 +186,13 @@ impl Cli {
             Self::Validate { path } => cmd_validate(path),
             Self::Diff { left, right } => cmd_diff(left, right),
             Self::Merge { left, right, output } => cmd_merge(left, right, output),
+            Self::Preview { path, port, theme } => {
+                let theme = match theme.as_deref() {
+                    Some("light") => Theme::Light,
+                    _ => Theme::Dark,
+                };
+                cmd_preview(path, *port, theme).await
+            }
         }
     }
 }
@@ -196,13 +212,30 @@ fn write_diagram(path: &str, diagram: &dg::Diagram) -> anyhow::Result<()> {
 }
 
 fn cmd_parse(path: &str) -> anyhow::Result<()> {
-    let diagram = read_diagram(path)?;
-    println!("{}", serde_json::to_string_pretty(&diagram)?);
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| anyhow::anyhow!("Failed to read '{}': {}", path, e))?;
+    if crate::sequence::is_sequence(&content) {
+        let diagram = crate::sequence::parse(&content).map_err(|e| anyhow::anyhow!("{e}"))?;
+        println!("{}", serde_json::to_string_pretty(&diagram)?);
+    } else {
+        let diagram = parser::parse(&content).map_err(|e| anyhow::anyhow!("{e}"))?;
+        println!("{}", serde_json::to_string_pretty(&diagram)?);
+    }
     Ok(())
 }
 
 fn cmd_info(path: &str) -> anyhow::Result<()> {
-    let diagram = read_diagram(path)?;
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| anyhow::anyhow!("Failed to read '{}': {}", path, e))?;
+    if crate::sequence::is_sequence(&content) {
+        let diagram = crate::sequence::parse(&content).map_err(|e| anyhow::anyhow!("{e}"))?;
+        println!("File: {path}");
+        println!("Type: sequence");
+        println!("Participants: {}", diagram.participants.len());
+        println!("Messages: {}", diagram.messages.len());
+        return Ok(());
+    }
+    let diagram = parser::parse(&content).map_err(|e| anyhow::anyhow!("{e}"))?;
     let mut shapes = [0usize; 6];
     for n in &diagram.nodes {
         shapes[match n.shape {
@@ -215,6 +248,7 @@ fn cmd_info(path: &str) -> anyhow::Result<()> {
         }] += 1;
     }
     println!("File: {path}");
+    println!("Type: flowchart");
     println!("Direction: {}", diagram.rankdir);
     println!("Nodes: {}", diagram.nodes.len());
     println!("  rect:     {}", shapes[0]);
@@ -228,9 +262,7 @@ fn cmd_info(path: &str) -> anyhow::Result<()> {
 }
 
 fn cmd_render(path: &str, output: Option<&str>, theme: Theme) -> anyhow::Result<()> {
-    let diagram = read_diagram(path)?;
-    let laid = layout::layout(&diagram);
-    let svg = renderer::render_svg_with_theme(&laid, theme);
+    let svg = crate::preview::render_file(path, theme).map_err(|e| anyhow::anyhow!("{e}"))?;
     match output {
         Some(out_path) => std::fs::write(out_path, &svg)?,
         None => println!("{svg}"),
@@ -442,6 +474,12 @@ fn cmd_merge(left: &str, right: &str, output: &str) -> anyhow::Result<()> {
     std::fs::write(output, merged.to_mermaid())?;
     println!("Merged diagram written to {output}");
     Ok(())
+}
+
+async fn cmd_preview(path: &str, port: u16, theme: Theme) -> anyhow::Result<()> {
+    // Fail fast if the file cannot be read/parsed.
+    crate::preview::render_file(path, theme).map_err(|e| anyhow::anyhow!("{e}"))?;
+    crate::preview::serve(path.to_string(), port, theme).await
 }
 
 fn cmd_update_edge(

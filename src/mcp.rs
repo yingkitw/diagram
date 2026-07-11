@@ -6,7 +6,7 @@ use rmcp::{
 };
 use rmcp::service::{MaybeSendFuture, RequestContext, RoleServer};
 
-use crate::{diagram as dg, layout, parser, renderer};
+use crate::{diagram as dg, parser, renderer};
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct FilePath {
@@ -148,19 +148,19 @@ struct BatchEdgeParams {
 
 fn read_file(path: &str) -> Result<dg::Diagram, CallToolResult> {
     let content = std::fs::read_to_string(path)
-        .map_err(|e| CallToolResult::error(vec![Content::text(format!(
+        .map_err(|e| CallToolResult::error(vec![ContentBlock::text(format!(
             "Failed to read file '{}': {}",
             path, e
         ))]))?;
     parser::parse(&content).map_err(|e| {
-        CallToolResult::error(vec![Content::text(e.to_string())])
+        CallToolResult::error(vec![ContentBlock::text(e.to_string())])
     })
 }
 
 fn write_file(path: &str, diagram: &dg::Diagram) -> Result<(), CallToolResult> {
     let mermaid = diagram.to_mermaid();
     std::fs::write(path, &mermaid).map_err(|e| {
-        CallToolResult::error(vec![Content::text(format!(
+        CallToolResult::error(vec![ContentBlock::text(format!(
             "Failed to write file '{}': {}",
             path, e
         ))])
@@ -182,7 +182,7 @@ where
     if let Err(e) = write_file(path, &diagram) {
         return e;
     }
-    CallToolResult::success(vec![Content::text(result)])
+    CallToolResult::success(vec![ContentBlock::text(result)])
 }
 
 #[derive(Debug, Clone)]
@@ -192,17 +192,59 @@ pub struct DiagramServer;
 impl DiagramServer {
     #[tool(description = "Parse a mermaid diagram file and return its JSON representation")]
     async fn parse_diagram(&self, Parameters(params): Parameters<FilePath>) -> CallToolResult {
-        match read_file(&params.path) {
-            Ok(diagram) => {
-                let json = serde_json::to_string_pretty(&diagram).unwrap_or_default();
-                CallToolResult::success(vec![Content::text(json)])
+        let content = match std::fs::read_to_string(&params.path) {
+            Ok(c) => c,
+            Err(e) => {
+                return CallToolResult::error(vec![ContentBlock::text(format!(
+                    "Failed to read file '{}': {}",
+                    params.path, e
+                ))]);
             }
-            Err(e) => e,
+        };
+        if crate::sequence::is_sequence(&content) {
+            match crate::sequence::parse(&content) {
+                Ok(diagram) => {
+                    let json = serde_json::to_string_pretty(&diagram).unwrap_or_default();
+                    CallToolResult::success(vec![ContentBlock::text(json)])
+                }
+                Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
+            }
+        } else {
+            match read_file(&params.path) {
+                Ok(diagram) => {
+                    let json = serde_json::to_string_pretty(&diagram).unwrap_or_default();
+                    CallToolResult::success(vec![ContentBlock::text(json)])
+                }
+                Err(e) => e,
+            }
         }
     }
 
     #[tool(description = "Get diagram summary (node count, edge count, type)")]
     async fn get_info(&self, Parameters(params): Parameters<FilePath>) -> CallToolResult {
+        let content = match std::fs::read_to_string(&params.path) {
+            Ok(c) => c,
+            Err(e) => {
+                return CallToolResult::error(vec![ContentBlock::text(format!(
+                    "Failed to read file '{}': {}",
+                    params.path, e
+                ))]);
+            }
+        };
+        if crate::sequence::is_sequence(&content) {
+            return match crate::sequence::parse(&content) {
+                Ok(diagram) => {
+                    let summary = serde_json::json!({
+                        "path": params.path,
+                        "type": "sequence",
+                        "participants": diagram.participants.len(),
+                        "messages": diagram.messages.len(),
+                    });
+                    CallToolResult::success(vec![ContentBlock::text(summary.to_string())])
+                }
+                Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
+            };
+        }
         let diagram = match read_file(&params.path) {
             Ok(d) => d,
             Err(e) => return e,
@@ -220,6 +262,7 @@ impl DiagramServer {
         }
         let summary = serde_json::json!({
             "path": params.path,
+            "type": "flowchart",
             "direction": diagram.rankdir,
             "nodes": diagram.nodes.len(),
             "edges": diagram.edges.len(),
@@ -232,22 +275,19 @@ impl DiagramServer {
                 "circle": shapes[5],
             },
         });
-        CallToolResult::success(vec![Content::text(summary.to_string())])
+        CallToolResult::success(vec![ContentBlock::text(summary.to_string())])
     }
 
-    #[tool(description = "Render diagram as SVG")]
+    #[tool(description = "Render diagram as SVG (flowchart or sequence)")]
     async fn render_svg(&self, Parameters(params): Parameters<RenderParams>) -> CallToolResult {
-        let diagram = match read_file(&params.path) {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
         let theme = match params.theme.as_deref() {
             Some("light") => renderer::Theme::Light,
             _ => renderer::Theme::Dark,
         };
-        let laid = layout::layout(&diagram);
-        let svg = renderer::render_svg_with_theme(&laid, theme);
-        CallToolResult::success(vec![Content::text(svg)])
+        match crate::preview::render_file(&params.path, theme) {
+            Ok(svg) => CallToolResult::success(vec![ContentBlock::text(svg)]),
+            Err(e) => CallToolResult::error(vec![ContentBlock::text(e)]),
+        }
     }
 
     #[tool(description = "Add a node to the diagram")]
@@ -256,7 +296,7 @@ impl DiagramServer {
             Some(s) => match dg::NodeShape::parse(s) {
                 Some(s) => s,
                 None => {
-                    return CallToolResult::error(vec![Content::text(format!(
+                    return CallToolResult::error(vec![ContentBlock::text(format!(
                         "Invalid shape '{}'. Use: rect, diamond, stadium, hexagon, cylinder, or circle",
                         s
                     ))])
@@ -273,7 +313,7 @@ impl DiagramServer {
                     href: params.href.clone(),
                     tooltip: params.tooltip.clone(),
                 })
-                .map_err(|e| CallToolResult::error(vec![Content::text(e)]))?;
+                .map_err(|e| CallToolResult::error(vec![ContentBlock::text(e)]))?;
             Ok(serde_json::json!({"status": "ok", "id": params.id}).to_string())
         })
     }
@@ -286,7 +326,7 @@ impl DiagramServer {
                 Some(s) => match dg::NodeShape::parse(s) {
                     Some(s) => s,
                     None => {
-                        return CallToolResult::error(vec![Content::text(format!(
+                        return CallToolResult::error(vec![ContentBlock::text(format!(
                             "Invalid shape '{}'. Use: rect, diamond, stadium, hexagon, cylinder, or circle",
                             s
                         ))])
@@ -306,7 +346,7 @@ impl DiagramServer {
                         href: None,
                         tooltip: None,
                     })
-                    .map_err(|e| CallToolResult::error(vec![Content::text(e)]))?;
+                    .map_err(|e| CallToolResult::error(vec![ContentBlock::text(e)]))?;
             }
             let ids: Vec<String> = parsed_shapes.iter().map(|(id, _, _)| id.clone()).collect();
             Ok(serde_json::json!({"status": "ok", "added": ids}).to_string())
@@ -323,7 +363,7 @@ impl DiagramServer {
                     "dashed" => dg::EdgeStyle::Dashed,
                     "thick" => dg::EdgeStyle::Thick,
                     _ => {
-                        return CallToolResult::error(vec![Content::text(format!(
+                        return CallToolResult::error(vec![ContentBlock::text(format!(
                             "Invalid edge style '{}'. Use: arrow, dashed, or thick",
                             s
                         ))])
@@ -347,7 +387,7 @@ impl DiagramServer {
                         label: label.clone(),
                         style: *style,
                     })
-                    .map_err(|e| CallToolResult::error(vec![Content::text(e)]))?;
+                    .map_err(|e| CallToolResult::error(vec![ContentBlock::text(e)]))?;
             }
             let edges: Vec<String> = parsed_edges
                 .iter()
@@ -377,7 +417,7 @@ impl DiagramServer {
             Some(s) => match dg::NodeShape::parse(s) {
                 Some(s) => Some(s),
                 None => {
-                    return CallToolResult::error(vec![Content::text(format!(
+                    return CallToolResult::error(vec![ContentBlock::text(format!(
                         "Invalid shape '{}'. Use: rect, diamond, stadium, hexagon, cylinder, or circle",
                         s
                     ))])
@@ -388,7 +428,7 @@ impl DiagramServer {
         modify_file(&params.path, |diagram| {
             diagram
                 .update_node(&params.id, params.text.as_deref(), shape)
-                .map_err(|e| CallToolResult::error(vec![Content::text(e)]))?;
+                .map_err(|e| CallToolResult::error(vec![ContentBlock::text(e)]))?;
             if let Some(node) = diagram.nodes.iter_mut().find(|n| n.id == params.id) {
                 if let Some(h) = &params.href {
                     node.href = Some(h.clone());
@@ -409,7 +449,7 @@ impl DiagramServer {
                 "dashed" => dg::EdgeStyle::Dashed,
                 "thick" => dg::EdgeStyle::Thick,
                 _ => {
-                    return CallToolResult::error(vec![Content::text(format!(
+                    return CallToolResult::error(vec![ContentBlock::text(format!(
                         "Invalid edge style '{}'. Use: arrow, dashed, or thick",
                         s
                     ))])
@@ -425,7 +465,7 @@ impl DiagramServer {
                     label: params.label.clone().unwrap_or_default(),
                     style,
                 })
-                .map_err(|e| CallToolResult::error(vec![Content::text(e)]))?;
+                .map_err(|e| CallToolResult::error(vec![ContentBlock::text(e)]))?;
             Ok(
                 serde_json::json!({"status": "ok", "edge": format!("{} -> {}", params.from, params.to)})
                     .to_string(),
@@ -441,7 +481,7 @@ impl DiagramServer {
         modify_file(&params.path, |diagram| {
             diagram
                 .remove_edge(&params.from, &params.to)
-                .map_err(|e| CallToolResult::error(vec![Content::text(e)]))?;
+                .map_err(|e| CallToolResult::error(vec![ContentBlock::text(e)]))?;
             Ok(
                 serde_json::json!({"status": "ok", "removed": format!("{} -> {}", params.from, params.to)})
                     .to_string(),
@@ -460,7 +500,7 @@ impl DiagramServer {
                 "dashed" => Some(dg::EdgeStyle::Dashed),
                 "thick" => Some(dg::EdgeStyle::Thick),
                 _ => {
-                    return CallToolResult::error(vec![Content::text(format!(
+                    return CallToolResult::error(vec![ContentBlock::text(format!(
                         "Invalid edge style '{}'. Use: arrow, dashed, or thick",
                         s
                     ))])
@@ -471,7 +511,7 @@ impl DiagramServer {
         modify_file(&params.path, |diagram| {
             diagram
                 .update_edge(&params.from, &params.to, params.label.as_deref(), style)
-                .map_err(|e| CallToolResult::error(vec![Content::text(e)]))?;
+                .map_err(|e| CallToolResult::error(vec![ContentBlock::text(e)]))?;
             Ok(
                 serde_json::json!({"status": "ok", "updated": format!("{} -> {}", params.from, params.to)})
                     .to_string(),
@@ -492,9 +532,9 @@ impl DiagramServer {
                     "text": n.text,
                     "shape": n.shape.to_string(),
                 });
-                CallToolResult::success(vec![Content::text(json.to_string())])
+                CallToolResult::success(vec![ContentBlock::text(json.to_string())])
             }
-            None => CallToolResult::error(vec![Content::text(format!(
+            None => CallToolResult::error(vec![ContentBlock::text(format!(
                 "Node '{}' not found",
                 params.id
             ))]),
@@ -522,9 +562,9 @@ impl DiagramServer {
                         dg::EdgeStyle::Thick => "thick",
                     },
                 });
-                CallToolResult::success(vec![Content::text(json.to_string())])
+                CallToolResult::success(vec![ContentBlock::text(json.to_string())])
             }
-            None => CallToolResult::error(vec![Content::text(format!(
+            None => CallToolResult::error(vec![ContentBlock::text(format!(
                 "Edge '{} -> {}' not found",
                 params.from, params.to
             ))]),
@@ -537,7 +577,7 @@ impl DiagramServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        CallToolResult::success(vec![Content::text(diagram.to_mermaid())])
+        CallToolResult::success(vec![ContentBlock::text(diagram.to_mermaid())])
     }
 
     #[tool(description = "Write raw mermaid source code directly to a file")]
@@ -546,10 +586,10 @@ impl DiagramServer {
         Parameters(params): Parameters<MermaidSourceParams>,
     ) -> CallToolResult {
         match std::fs::write(&params.path, &params.source) {
-            Ok(_) => CallToolResult::success(vec![Content::text(
+            Ok(_) => CallToolResult::success(vec![ContentBlock::text(
                 serde_json::json!({"status": "ok", "path": params.path}).to_string(),
             )]),
-            Err(e) => CallToolResult::error(vec![Content::text(format!(
+            Err(e) => CallToolResult::error(vec![ContentBlock::text(format!(
                 "Failed to write file '{}': {}",
                 params.path, e
             ))]),
@@ -573,7 +613,7 @@ impl DiagramServer {
                 })
             })
             .collect();
-        CallToolResult::success(vec![Content::text(
+        CallToolResult::success(vec![ContentBlock::text(
             serde_json::to_string_pretty(&nodes).unwrap_or_default(),
         )])
     }
@@ -589,7 +629,7 @@ impl DiagramServer {
             "valid": issues.is_empty(),
             "issues": issues,
         });
-        CallToolResult::success(vec![Content::text(json.to_string())])
+        CallToolResult::success(vec![ContentBlock::text(json.to_string())])
     }
 
     #[tool(description = "List all edges in the diagram")]
@@ -614,7 +654,7 @@ impl DiagramServer {
                 })
             })
             .collect();
-        CallToolResult::success(vec![Content::text(
+        CallToolResult::success(vec![ContentBlock::text(
             serde_json::to_string_pretty(&edges).unwrap_or_default(),
         )])
     }
@@ -630,7 +670,7 @@ impl DiagramServer {
             Err(e) => return e,
         };
         let diff = left.diff(&right);
-        CallToolResult::success(vec![Content::text(
+        CallToolResult::success(vec![ContentBlock::text(
             serde_json::to_string_pretty(&diff).unwrap_or_default(),
         )])
     }
@@ -647,10 +687,10 @@ impl DiagramServer {
         };
         let merged = left.merge(&right);
         match std::fs::write(&params.output, merged.to_mermaid()) {
-            Ok(_) => CallToolResult::success(vec![Content::text(format!(
+            Ok(_) => CallToolResult::success(vec![ContentBlock::text(format!(
                 "Merged diagram written to {}", params.output
             ))]),
-            Err(e) => CallToolResult::error(vec![Content::text(format!(
+            Err(e) => CallToolResult::error(vec![ContentBlock::text(format!(
                 "Failed to write output file: {}", e
             ))]),
         }
@@ -704,17 +744,10 @@ impl ServerHandler for DiagramServer {
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListResourceTemplatesResult, ErrorData>> + MaybeSendFuture + '_ {
         std::future::ready(Ok(ListResourceTemplatesResult::with_all_items(vec![
-            ResourceTemplate::new(
-                RawResourceTemplate {
-                    uri_template: "file://{path}".to_string(),
-                    name: "mermaid-diagram".to_string(),
-                    title: Some("Mermaid diagram file".to_string()),
-                    description: Some("Read any .mmd file as a text resource".to_string()),
-                    mime_type: Some("text/plain".to_string()),
-                    icons: None,
-                },
-                None,
-            )
+            ResourceTemplate::new("file://{path}", "mermaid-diagram")
+                .with_title("Mermaid diagram file")
+                .with_description("Read any .mmd file as a text resource")
+                .with_mime_type("text/plain"),
         ])))
     }
 
@@ -767,10 +800,10 @@ impl ServerHandler for DiagramServer {
     ) -> impl std::future::Future<Output = Result<GetPromptResult, ErrorData>> + MaybeSendFuture + '_ {
         let messages = match request.name.as_str() {
             "create_flowchart" => vec![
-                PromptMessage::new_text(PromptMessageRole::User, "Create a flowchart diagram. Describe the process, decision points, and outcomes. Use standard mermaid flowchart syntax with appropriate node shapes."),
+                PromptMessage::new_text(Role::User, "Create a flowchart diagram. Describe the process, decision points, and outcomes. Use standard mermaid flowchart syntax with appropriate node shapes."),
             ],
             "refactor_diagram" => vec![
-                PromptMessage::new_text(PromptMessageRole::User, "Refactor the given diagram to improve clarity, reduce complexity, and ensure consistent naming. Consider merging duplicate nodes, simplifying edge crossings, and improving labels."),
+                PromptMessage::new_text(Role::User, "Refactor the given diagram to improve clarity, reduce complexity, and ensure consistent naming. Consider merging duplicate nodes, simplifying edge crossings, and improving labels."),
             ],
             _ => {
                 return std::future::ready(Err(ErrorData::invalid_params(

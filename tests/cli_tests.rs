@@ -165,3 +165,25 @@ fn test_cli_merge() {
     assert!(merged.contains("C[New]"), "merged output should contain new node C\nmerged: {merged}");
     let _ = std::fs::remove_file(&output);
 }
+
+#[test]
+fn test_cli_preview_help() {
+    let (stdout, _, code) = run(&["preview", "--help"]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("--port"), "preview --help should mention --port\nstdout: {stdout}");
+    assert!(stdout.contains("--theme"), "preview --help should mention --theme\nstdout: {stdout}");
+}
+
+#[test]
+fn test_cli_sequence_info_and_render() {
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/sequence.mmd");
+    let path = path.to_str().unwrap();
+    let (stdout, _, code) = run(&["info", path]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("Type: sequence"), "stdout: {stdout}");
+    assert!(stdout.contains("Participants: 2"), "stdout: {stdout}");
+    let (stdout, _, code) = run(&["render", path]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("<svg"), "stdout should be SVG");
+    assert!(stdout.contains("Alice"));
+}

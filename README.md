@@ -1,6 +1,6 @@
 # diagram
 
-A Rust CLI and MCP (Model Context Protocol) server for manipulating Mermaid diagrams. Parse, inspect, modify, and render `.mmd` files from the command line or through any MCP-compatible AI assistant.
+A Rust CLI and MCP (Model Context Protocol) server for manipulating Mermaid diagrams. Parse, inspect, modify, and render `.mmd` files from the command line or through any MCP-compatible AI assistant. Supports flowcharts and sequence diagrams.
 
 ## Usage
 
@@ -22,6 +22,15 @@ diagram render sample.mmd --output out.svg --watch
 
 # Light theme
 diagram render sample.mmd --output out.svg --theme light
+
+# Live browser preview (auto-refreshes SVG)
+diagram preview sample.mmd
+diagram preview sample.mmd --port 8080 --theme light
+
+# Sequence diagrams
+diagram info examples/sequence.mmd
+diagram render examples/sequence.mmd --output seq.svg
+diagram preview examples/sequence.mmd
 
 # Manipulate nodes and edges
 diagram add-node sample.mmd X "New Node"
@@ -120,8 +129,10 @@ src/
 ├── main.rs      # Entry point
 ├── cli.rs       # CLI subcommands
 ├── mcp.rs       # MCP server & tools
+├── preview.rs   # Live browser preview server
+├── sequence.rs  # Sequence diagram parse/layout/render
 ├── diagram.rs   # Core data model
-├── parser.rs    # Mermaid parser
+├── parser.rs    # Mermaid flowchart parser
 ├── layout.rs    # Graph layout algorithm
 └── renderer.rs  # SVG generation
 ```

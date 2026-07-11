@@ -69,11 +69,29 @@ fn test_all_examples_roundtrip() {
         let path = entry.path();
         if path.extension().and_then(|s| s.to_str()) == Some("mmd") {
             let source = fs::read_to_string(&path).unwrap();
-            let diagram = diagram::parser::parse(&source).unwrap();
-            let output = diagram.to_mermaid();
-            let reparsed = diagram::parser::parse(&output).unwrap();
-            assert_eq!(diagram.nodes.len(), reparsed.nodes.len(), "node count mismatch for {:?}", path);
-            assert_eq!(diagram.edges.len(), reparsed.edges.len(), "edge count mismatch for {:?}", path);
+            if diagram::sequence::is_sequence(&source) {
+                let diagram = diagram::sequence::parse(&source).unwrap();
+                let output = diagram.to_mermaid();
+                let reparsed = diagram::sequence::parse(&output).unwrap();
+                assert_eq!(
+                    diagram.participants.len(),
+                    reparsed.participants.len(),
+                    "participant count mismatch for {:?}",
+                    path
+                );
+                assert_eq!(
+                    diagram.messages.len(),
+                    reparsed.messages.len(),
+                    "message count mismatch for {:?}",
+                    path
+                );
+            } else {
+                let diagram = diagram::parser::parse(&source).unwrap();
+                let output = diagram.to_mermaid();
+                let reparsed = diagram::parser::parse(&output).unwrap();
+                assert_eq!(diagram.nodes.len(), reparsed.nodes.len(), "node count mismatch for {:?}", path);
+                assert_eq!(diagram.edges.len(), reparsed.edges.len(), "edge count mismatch for {:?}", path);
+            }
         }
     }
 }
@@ -237,4 +255,101 @@ fn test_render_subgraphs_example() {
             sg.id
         );
     }
+}
+
+#[tokio::test]
+async fn test_preview_server_serves_html_and_svg() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let path = examples_dir().join("simple-flowchart.mmd");
+    let path_str = path.to_str().unwrap().to_string();
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    let serve_path = path_str.clone();
+    let handle = tokio::spawn(async move {
+        let _ = diagram::preview::serve_with_listener(
+            listener,
+            serve_path,
+            diagram::renderer::Theme::Dark,
+        )
+        .await;
+    });
+
+    async fn http_get(port: u16, path: &str) -> (u16, String) {
+        let mut stream = tokio::net::TcpStream::connect(format!("127.0.0.1:{port}"))
+            .await
+            .expect("connect to preview server");
+        let req = format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+        stream.write_all(req.as_bytes()).await.unwrap();
+        let mut buf = Vec::new();
+        stream.read_to_end(&mut buf).await.unwrap();
+        let text = String::from_utf8_lossy(&buf);
+        let status = text
+            .lines()
+            .next()
+            .and_then(|l| l.split_whitespace().nth(1))
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+        let body = text.split("\r\n\r\n").nth(1).unwrap_or("").to_string();
+        (status, body)
+    }
+
+    let (status, body) = http_get(port, "/health").await;
+    assert_eq!(status, 200);
+    assert_eq!(body, "ok");
+
+    let (status, body) = http_get(port, "/").await;
+    assert_eq!(status, 200);
+    assert!(body.contains("fetch('/svg')"), "expected preview HTML shell");
+    assert!(body.contains("simple-flowchart.mmd"));
+
+    let (status, body) = http_get(port, "/svg").await;
+    assert_eq!(status, 200);
+    assert!(body.contains("<svg"), "expected SVG body, got: {body}");
+
+    let (status, _) = http_get(port, "/missing").await;
+    assert_eq!(status, 404);
+
+    handle.abort();
+}
+
+#[test]
+fn test_preview_render_file() {
+    let path = examples_dir().join("simple-flowchart.mmd");
+    let svg = diagram::preview::render_file(
+        path.to_str().unwrap(),
+        diagram::renderer::Theme::Light,
+    )
+    .unwrap();
+    assert!(svg.contains("<svg"));
+}
+
+#[test]
+fn test_sequence_example_parse_and_render() {
+    let path = examples_dir().join("sequence.mmd");
+    let source = fs::read_to_string(&path).unwrap();
+    assert!(diagram::sequence::is_sequence(&source));
+    let diagram = diagram::sequence::parse(&source).unwrap();
+    assert_eq!(diagram.participants.len(), 2);
+    assert_eq!(diagram.messages.len(), 4);
+    let svg = diagram::sequence::render_svg(&diagram, diagram::renderer::Theme::Dark);
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("Alice"));
+    assert!(svg.contains("Hello Bob"));
+    let roundtrip = diagram::sequence::parse(&diagram.to_mermaid()).unwrap();
+    assert_eq!(roundtrip.messages.len(), 4);
+}
+
+#[test]
+fn test_preview_renders_sequence() {
+    let path = examples_dir().join("sequence.mmd");
+    let svg = diagram::preview::render_file(
+        path.to_str().unwrap(),
+        diagram::renderer::Theme::Dark,
+    )
+    .unwrap();
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("Alice"));
 }
