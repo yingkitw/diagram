@@ -197,6 +197,23 @@ mod tests {
     }
 
     #[test]
+    fn plantuml_activity_export_roundtrip() {
+        let src = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/activity.puml"),
+        )
+        .unwrap();
+        let doc = import_str(&src, Format::PlantUml).unwrap();
+        let out = export_str(&doc, Format::PlantUml).unwrap();
+        assert!(out.contains("@startuml"));
+        assert!(out.contains("Receive request"));
+        let doc2 = import_str(&out, Format::PlantUml).unwrap();
+        assert_eq!(
+            doc.primary().unwrap().kind(),
+            doc2.primary().unwrap().kind()
+        );
+    }
+
+    #[test]
     fn plantuml_activity_import() {
         let src = "@startuml\nstart\n:Go;\nstop\n@enduml";
         let doc = import_str(src, Format::PlantUml).unwrap();

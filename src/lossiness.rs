@@ -105,11 +105,19 @@ fn dot_report(doc: &Document) -> LossinessReport {
 
 fn plantuml_report(doc: &Document) -> LossinessReport {
     let mut warnings = Vec::new();
-    let supported_count = doc
-        .diagrams
-        .iter()
-        .filter(|d| matches!(d, Diagram::Sequence(_) | Diagram::Class(_)))
-        .count();
+    let mut supported_count = 0usize;
+    let mut generic_flowchart = 0usize;
+
+    for d in &doc.diagrams {
+        match d {
+            Diagram::Sequence(_) | Diagram::Class(_) => supported_count += 1,
+            Diagram::Flowchart(fc) if crate::formats::plantuml::is_activity_exportable(fc) => {
+                supported_count += 1;
+            }
+            Diagram::Flowchart(_) => generic_flowchart += 1,
+            _ => {}
+        }
+    }
 
     if supported_count == 0 {
         return LossinessReport {
@@ -121,19 +129,27 @@ fn plantuml_report(doc: &Document) -> LossinessReport {
                 diagram_index: None,
                 kind: None,
                 code: "format.unsupported_export".into(),
-                message: "PlantUML export supports sequence and class diagrams only".into(),
+                message: "PlantUML export supports sequence, class, and activity-shaped flowcharts".into(),
                 count: None,
             }],
         };
     }
 
-    let skipped = doc.diagrams.len() - supported_count;
-    if skipped > 0 {
+    let skipped = doc.diagrams.len().saturating_sub(supported_count);
+    if generic_flowchart > 0 {
         warnings.push(LossWarning {
             diagram_index: None,
             kind: None,
             code: "document.non_puml_skipped".into(),
-            message: "flowchart/gantt diagrams are omitted from PlantUML export".into(),
+            message: "generic flowchart/gantt diagrams are omitted from PlantUML export".into(),
+            count: Some(skipped),
+        });
+    } else if skipped > 0 {
+        warnings.push(LossWarning {
+            diagram_index: None,
+            kind: None,
+            code: "document.non_puml_skipped".into(),
+            message: "unsupported diagram kinds are omitted from PlantUML export".into(),
             count: Some(skipped),
         });
     }

@@ -40,7 +40,7 @@
 | `mermaid` / `mmd` | ✓ | ✓ | All kinds; multi-diagram uses `%% diagram N:` markers |
 | `json` / `ir` | ✓ | ✓ | Lossless native IR |
 | `dot` / `gv` | ✓ flowchart | ✓ flowchart | Digraph subset |
-| `plantuml` / `puml` | ✓ sequence, class, activity | ✓ sequence, class | Activity imports as flowchart IR |
+| `plantuml` / `puml` | ✓ sequence, class, activity | ✓ sequence, class, activity-shaped flowchart | Activity imports as flowchart IR |
 
 Detection: content heuristics (`@startuml`, `digraph`, `{` JSON) plus path extension. Override with `--from` / `--to` on CLI or MCP.
 
@@ -85,8 +85,7 @@ Mermaid remains the primary authored Format. Syntax below is Compatibility cover
 ### Activity
 
 - `start` / `stop` / `end`, `:action;`, `if (cond) then (label)` / `else (label)` / `endif`
-- Imports into **flowchart IR** (renders via flowchart layout)
-- Not yet: while/repeat/fork; PlantUML activity export
+- Import and export (activity-shaped flowcharts with `start` stadium node)
 
 ## Graphviz DOT Compatibility (subset)
 
@@ -135,7 +134,7 @@ Commands:
   validate     Validate diagram
   metrics      Structural metrics as JSON
   create       Create a new diagram scaffold
-  diff         Compare two diagrams
+  diff         Compare two documents (any import format; IR-level structural diff)
   merge        Merge two diagrams
   markdown     Render fenced diagram blocks; rewrite image links
   mcp          Start MCP server (stdio)
@@ -160,7 +159,7 @@ Commands:
 | `render_png` | path, output, theme? | Status JSON |
 | `render_pdf` | path, output, theme? | Status JSON |
 | `process_markdown` | path, output_dir, output, format?, theme? | Status JSON |
-| `diff_diagram` | left, right | Diff JSON |
+| `diff_diagram` | left, right | `DocumentDiff` JSON (per-diagram entries, summary) |
 | `merge_diagram` | left, right, output | Status JSON |
 | `add_node` | path, id, text, shape? | Status JSON |
 | `remove_node` | path, id | Status JSON |
@@ -202,6 +201,31 @@ struct Node {
 ```
 
 Canonical wrapper: `Document { version, diagrams: Vec<Diagram> }` where `Diagram` is a tagged enum by `kind`.
+
+## Analyze: `diff` / `DocumentDiff`
+
+`diagram diff <left> <right>` and MCP `diff_diagram` load both paths via `ir::load_path` (Mermaid, JSON IR, DOT, PlantUML) and return:
+
+```json
+{
+  "left_diagrams": 1,
+  "right_diagrams": 1,
+  "diagram_count_changed": false,
+  "unchanged": false,
+  "summary": ["diagram 0: changed (flowchart)"],
+  "entries": [
+    {
+      "index": 0,
+      "status": "changed",
+      "left_kind": "flowchart",
+      "right_kind": "flowchart",
+      "detail": { "added_nodes": [], "removed_nodes": [], "added_edges": [], ... }
+    }
+  ]
+}
+```
+
+Per-kind `detail`: flowchart (`added_nodes` / `removed_nodes` / `modified_nodes` / edges / `rankdir_changed`), sequence (participants, messages), class (classes, relations), gantt (title, tasks). Entries may be `added`, `removed`, `kind_changed`, `unchanged`, or `changed`. `merge` remains flowchart-only.
 
 ## Library Interface
 

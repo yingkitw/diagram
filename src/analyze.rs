@@ -300,6 +300,338 @@ fn gantt_metrics(g: &crate::gantt::GanttDiagram) -> GanttMetrics {
     }
 }
 
+// --- Semantic diff (IR-level) ---
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DocumentDiff {
+    pub left_diagrams: usize,
+    pub right_diagrams: usize,
+    pub diagram_count_changed: bool,
+    pub unchanged: bool,
+    pub summary: Vec<String>,
+    pub entries: Vec<DiagramDiffEntry>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DiagramDiffEntry {
+    pub index: usize,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub left_kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub right_kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<DiffDetail>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum DiffDetail {
+    Flowchart(flowchart::DiagramDiff),
+    Sequence(SequenceDiff),
+    Class(ClassDiff),
+    Gantt(GanttDiff),
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SequenceDiff {
+    pub added_participants: Vec<String>,
+    pub removed_participants: Vec<String>,
+    pub added_messages: Vec<crate::sequence::Message>,
+    pub removed_messages: Vec<crate::sequence::Message>,
+    pub modified_messages: Vec<(crate::sequence::Message, crate::sequence::Message)>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ClassDiff {
+    pub added_classes: Vec<String>,
+    pub removed_classes: Vec<String>,
+    pub added_relations: Vec<crate::class::Relation>,
+    pub removed_relations: Vec<crate::class::Relation>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GanttDiff {
+    pub title_changed: bool,
+    pub added_tasks: Vec<String>,
+    pub removed_tasks: Vec<String>,
+}
+
+/// Structural diff of two Documents (any supported kind, by diagram index).
+pub fn diff_documents(left: &Document, right: &Document) -> DocumentDiff {
+    let left_diagrams = left.diagrams.len();
+    let right_diagrams = right.diagrams.len();
+    let diagram_count_changed = left_diagrams != right_diagrams;
+    let max = left_diagrams.max(right_diagrams);
+    let mut entries = Vec::new();
+    let mut summary = Vec::new();
+
+    if diagram_count_changed {
+        summary.push(format!(
+            "diagram count changed: {left_diagrams} → {right_diagrams}"
+        ));
+    }
+
+    for i in 0..max {
+        let entry = match (left.diagrams.get(i), right.diagrams.get(i)) {
+            (None, Some(r)) => {
+                summary.push(format!("diagram {i}: added ({})", r.kind()));
+                DiagramDiffEntry {
+                    index: i,
+                    status: "added".into(),
+                    left_kind: None,
+                    right_kind: Some(r.kind().to_string()),
+                    detail: None,
+                }
+            }
+            (Some(l), None) => {
+                summary.push(format!("diagram {i}: removed ({})", l.kind()));
+                DiagramDiffEntry {
+                    index: i,
+                    status: "removed".into(),
+                    left_kind: Some(l.kind().to_string()),
+                    right_kind: None,
+                    detail: None,
+                }
+            }
+            (Some(l), Some(r)) => diff_diagram_pair(i, l, r, &mut summary),
+            (None, None) => unreachable!(),
+        };
+        entries.push(entry);
+    }
+
+    let unchanged = !diagram_count_changed && entries.iter().all(|e| e.status == "unchanged");
+
+    DocumentDiff {
+        left_diagrams,
+        right_diagrams,
+        diagram_count_changed,
+        unchanged,
+        summary,
+        entries,
+    }
+}
+
+fn diff_diagram_pair(
+    index: usize,
+    left: &Diagram,
+    right: &Diagram,
+    summary: &mut Vec<String>,
+) -> DiagramDiffEntry {
+    if left.kind() != right.kind() {
+        summary.push(format!(
+            "diagram {index}: kind changed {} → {}",
+            left.kind(),
+            right.kind()
+        ));
+        return DiagramDiffEntry {
+            index,
+            status: "kind_changed".into(),
+            left_kind: Some(left.kind().to_string()),
+            right_kind: Some(right.kind().to_string()),
+            detail: None,
+        };
+    }
+
+    let (detail, unchanged) = match (left, right) {
+        (Diagram::Flowchart(l), Diagram::Flowchart(r)) => {
+            let d = l.diff(r);
+            let unchanged = flowchart_unchanged(&d);
+            (Some(DiffDetail::Flowchart(d)), unchanged)
+        }
+        (Diagram::Sequence(l), Diagram::Sequence(r)) => {
+            let d = diff_sequence(l, r);
+            let unchanged = sequence_unchanged(&d);
+            (Some(DiffDetail::Sequence(d)), unchanged)
+        }
+        (Diagram::Class(l), Diagram::Class(r)) => {
+            let d = diff_class(l, r);
+            let unchanged = class_unchanged(&d);
+            (Some(DiffDetail::Class(d)), unchanged)
+        }
+        (Diagram::Gantt(l), Diagram::Gantt(r)) => {
+            let d = diff_gantt(l, r);
+            let unchanged = gantt_unchanged(&d);
+            (Some(DiffDetail::Gantt(d)), unchanged)
+        }
+        _ => unreachable!("kinds matched above"),
+    };
+
+    if !unchanged {
+        summary.push(format!("diagram {index}: changed ({})", left.kind()));
+    }
+
+    DiagramDiffEntry {
+        index,
+        status: if unchanged { "unchanged" } else { "changed" }.into(),
+        left_kind: Some(left.kind().to_string()),
+        right_kind: Some(right.kind().to_string()),
+        detail,
+    }
+}
+
+fn flowchart_unchanged(d: &flowchart::DiagramDiff) -> bool {
+    d.added_nodes.is_empty()
+        && d.removed_nodes.is_empty()
+        && d.modified_nodes.is_empty()
+        && d.added_edges.is_empty()
+        && d.removed_edges.is_empty()
+        && d.modified_edges.is_empty()
+        && !d.rankdir_changed
+}
+
+fn diff_sequence(
+    left: &crate::sequence::SequenceDiagram,
+    right: &crate::sequence::SequenceDiagram,
+) -> SequenceDiff {
+    let left_ids: HashSet<&str> = left.participants.iter().map(|p| p.id.as_str()).collect();
+    let right_ids: HashSet<&str> = right.participants.iter().map(|p| p.id.as_str()).collect();
+
+    let added_participants: Vec<String> = right
+        .participants
+        .iter()
+        .filter(|p| !left_ids.contains(p.id.as_str()))
+        .map(|p| p.id.clone())
+        .collect();
+    let removed_participants: Vec<String> = left
+        .participants
+        .iter()
+        .filter(|p| !right_ids.contains(p.id.as_str()))
+        .map(|p| p.id.clone())
+        .collect();
+
+    let mut added_messages = Vec::new();
+    let mut removed_messages = Vec::new();
+    let mut modified_messages = Vec::new();
+
+    let max_len = left.messages.len().max(right.messages.len());
+    for i in 0..max_len {
+        match (left.messages.get(i), right.messages.get(i)) {
+            (Some(l), Some(r)) if messages_equal(l, r) => {}
+            (Some(l), Some(r)) => modified_messages.push((l.clone(), r.clone())),
+            (Some(l), None) => removed_messages.push(l.clone()),
+            (None, Some(r)) => added_messages.push(r.clone()),
+            (None, None) => {}
+        }
+    }
+
+    SequenceDiff {
+        added_participants,
+        removed_participants,
+        added_messages,
+        removed_messages,
+        modified_messages,
+    }
+}
+
+fn messages_equal(a: &crate::sequence::Message, b: &crate::sequence::Message) -> bool {
+    a.from == b.from && a.to == b.to && a.text == b.text && a.arrow == b.arrow
+}
+
+fn sequence_unchanged(d: &SequenceDiff) -> bool {
+    d.added_participants.is_empty()
+        && d.removed_participants.is_empty()
+        && d.added_messages.is_empty()
+        && d.removed_messages.is_empty()
+        && d.modified_messages.is_empty()
+}
+
+fn diff_class(
+    left: &crate::class::ClassDiagram,
+    right: &crate::class::ClassDiagram,
+) -> ClassDiff {
+    let left_ids: HashSet<&str> = left.classes.iter().map(|c| c.id.as_str()).collect();
+    let right_ids: HashSet<&str> = right.classes.iter().map(|c| c.id.as_str()).collect();
+
+    let added_classes: Vec<String> = right
+        .classes
+        .iter()
+        .filter(|c| !left_ids.contains(c.id.as_str()))
+        .map(|c| c.id.clone())
+        .collect();
+    let removed_classes: Vec<String> = left
+        .classes
+        .iter()
+        .filter(|c| !right_ids.contains(c.id.as_str()))
+        .map(|c| c.id.clone())
+        .collect();
+
+    let relation_key = |r: &crate::class::Relation| {
+        format!("{}|{}|{:?}|{}", r.from, r.to, r.kind, r.label)
+    };
+
+    let left_rel: HashSet<String> = left.relations.iter().map(relation_key).collect();
+    let right_rel: HashSet<String> = right.relations.iter().map(relation_key).collect();
+
+    let added_relations: Vec<crate::class::Relation> = right
+        .relations
+        .iter()
+        .filter(|r| !left_rel.contains(&relation_key(r)))
+        .cloned()
+        .collect();
+    let removed_relations: Vec<crate::class::Relation> = left
+        .relations
+        .iter()
+        .filter(|r| !right_rel.contains(&relation_key(r)))
+        .cloned()
+        .collect();
+
+    ClassDiff {
+        added_classes,
+        removed_classes,
+        added_relations,
+        removed_relations,
+    }
+}
+
+fn class_unchanged(d: &ClassDiff) -> bool {
+    d.added_classes.is_empty()
+        && d.removed_classes.is_empty()
+        && d.added_relations.is_empty()
+        && d.removed_relations.is_empty()
+}
+
+fn diff_gantt(
+    left: &crate::gantt::GanttDiagram,
+    right: &crate::gantt::GanttDiagram,
+) -> GanttDiff {
+    let title_changed = left.title != right.title;
+
+    let task_key = |t: &crate::gantt::GanttTask| {
+        format!(
+            "{}|{}",
+            t.section,
+            t.id.as_deref().unwrap_or(t.name.as_str())
+        )
+    };
+
+    let left_keys: HashSet<String> = left.tasks.iter().map(task_key).collect();
+    let right_keys: HashSet<String> = right.tasks.iter().map(task_key).collect();
+
+    let added_tasks: Vec<String> = right
+        .tasks
+        .iter()
+        .filter(|t| !left_keys.contains(&task_key(t)))
+        .map(|t| t.id.clone().unwrap_or_else(|| t.name.clone()))
+        .collect();
+    let removed_tasks: Vec<String> = left
+        .tasks
+        .iter()
+        .filter(|t| !right_keys.contains(&task_key(t)))
+        .map(|t| t.id.clone().unwrap_or_else(|| t.name.clone()))
+        .collect();
+
+    GanttDiff {
+        title_changed,
+        added_tasks,
+        removed_tasks,
+    }
+}
+
+fn gantt_unchanged(d: &GanttDiff) -> bool {
+    !d.title_changed && d.added_tasks.is_empty() && d.removed_tasks.is_empty()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -369,5 +701,59 @@ mod tests {
         let m = metrics(&doc2);
         assert_eq!(m.kind, "multi");
         assert_eq!(m.entries.as_ref().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn diff_flowchart_detects_node_and_edge_changes() {
+        let left = ir::from_mermaid("graph TD\n  A-->B\n").unwrap();
+        let right = ir::from_mermaid("graph TD\n  A-->B\n  A-->C\n").unwrap();
+        let d = diff_documents(&left, &right);
+        assert!(!d.unchanged);
+        assert_eq!(d.entries.len(), 1);
+        assert_eq!(d.entries[0].status, "changed");
+        let Some(DiffDetail::Flowchart(fc)) = &d.entries[0].detail else {
+            panic!("expected flowchart diff");
+        };
+        assert_eq!(fc.added_edges.len(), 1);
+        assert_eq!(fc.added_edges[0].to, "C");
+    }
+
+    #[test]
+    fn diff_identical_documents_unchanged() {
+        let doc = ir::from_mermaid("graph TD\n  A-->B\n").unwrap();
+        let d = diff_documents(&doc, &doc);
+        assert!(d.unchanged);
+        assert_eq!(d.entries[0].status, "unchanged");
+    }
+
+    #[test]
+    fn diff_sequence_participant_change() {
+        let left = ir::from_mermaid("sequenceDiagram\n  A->>B: hi\n").unwrap();
+        let right = ir::from_mermaid("sequenceDiagram\n  participant C\n  A->>B: hi\n").unwrap();
+        let d = diff_documents(&left, &right);
+        let Some(DiffDetail::Sequence(s)) = &d.entries[0].detail else {
+            panic!("expected sequence diff");
+        };
+        assert!(s.added_participants.contains(&"C".to_string()));
+    }
+
+    #[test]
+    fn diff_document_count_change() {
+        let one = ir::from_mermaid("graph TD\n  A-->B\n").unwrap();
+        let two = Document {
+            version: 1,
+            diagrams: vec![
+                one.primary().unwrap().clone(),
+                ir::from_mermaid("sequenceDiagram\n  A->>B: hi\n")
+                    .unwrap()
+                    .primary()
+                    .unwrap()
+                    .clone(),
+            ],
+        };
+        let d = diff_documents(&one, &two);
+        assert!(d.diagram_count_changed);
+        assert_eq!(d.entries.len(), 2);
+        assert_eq!(d.entries[1].status, "added");
     }
 }

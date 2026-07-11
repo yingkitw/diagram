@@ -6,7 +6,7 @@ A native Rust platform for **diagram rendering, generation, analysis, and interc
 |--------|----------------|
 | **Render** | Fast, Chromium-free layout → SVG, PNG, and PDF (raster) |
 | **Generate** | Structured create/edit via CLI + MCP (agents and scripts) |
-| **Analyze** | Validate, diff, merge, and structural metrics on the IR |
+| **Analyze** | Validate, structural diff (all IR kinds), merge (flowchart), metrics on the IR |
 | **Interchange** | Import/export across formats via a canonical IR |
 
 **Why this vs Mermaid.js / PlantUML?** Single native binary, MCP-first agent workflows, analysis without a browser or JVM, and a format-agnostic core so you can keep existing Mermaid/PlantUML sources while moving toward a richer IR.
@@ -42,7 +42,7 @@ diagram lossiness sample.ir.json --to mermaid
 diagram validate sample.mmd
 diagram metrics sample.mmd
 diagram info sample.mmd
-diagram diff base.mmd modified.mmd
+diagram diff base.mmd modified.mmd   # IR-level diff; supports Mermaid, DOT, PlantUML, JSON
 
 # Generate
 diagram create --kind flowchart --output new.mmd
@@ -63,7 +63,7 @@ diagram mcp   # agent tools over stdio
 | SVG | Render export | Stable |
 | PNG | Render export (`.png` via `diagram render`) | Stable |
 | PDF | Render export (`.pdf` via `diagram render`; raster embed) | Stable |
-| PlantUML (`.puml`) | Sequence + class import/export; activity → flowchart IR | Activity export; expand syntax |
+| PlantUML (`.puml`) | Sequence + class + activity-shaped flowchart import/export | Expand syntax |
 | Graphviz DOT (`.dot`) | Flowchart import + export (digraph subset) | Expand subset |
 | Lossiness report | `diagram lossiness` / `export --report` / MCP | Expand per-format warnings |
 

@@ -607,9 +607,9 @@ fn cmd_create(kind: &str, output: &str) -> anyhow::Result<()> {
 }
 
 fn cmd_diff(left: &str, right: &str) -> anyhow::Result<()> {
-    let left_diag = read_diagram(left)?;
-    let right_diag = read_diagram(right)?;
-    let diff = left_diag.diff(&right_diag);
+    let left_doc = crate::ir::load_path(left).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let right_doc = crate::ir::load_path(right).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let diff = crate::analyze::diff_documents(&left_doc, &right_doc);
     println!("{}", serde_json::to_string_pretty(&diff)?);
     Ok(())
 }

@@ -850,15 +850,23 @@ impl DiagramServer {
 
     #[tool(description = "Compare two diagrams and show differences")]
     async fn diff_diagram(&self, Parameters(params): Parameters<DiffParams>) -> CallToolResult {
-        let left = match read_file(&params.left) {
+        let left = match crate::ir::load_path(&params.left) {
             Ok(d) => d,
-            Err(e) => return e,
+            Err(e) => {
+                return CallToolResult::error(vec![ContentBlock::text(format!(
+                    "Failed to load left diagram: {e}"
+                ))]);
+            }
         };
-        let right = match read_file(&params.right) {
+        let right = match crate::ir::load_path(&params.right) {
             Ok(d) => d,
-            Err(e) => return e,
+            Err(e) => {
+                return CallToolResult::error(vec![ContentBlock::text(format!(
+                    "Failed to load right diagram: {e}"
+                ))]);
+            }
         };
-        let diff = left.diff(&right);
+        let diff = crate::analyze::diff_documents(&left, &right);
         CallToolResult::success(vec![ContentBlock::text(
             serde_json::to_string_pretty(&diff).unwrap_or_default(),
         )])

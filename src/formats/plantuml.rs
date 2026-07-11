@@ -4,7 +4,7 @@ use crate::class::{self, Class, ClassDiagram, ClassMember, Relation};
 use crate::diagram::{Diagram as FcDiagram, Edge, Node, NodeShape};
 use crate::ir::{Diagram, Document, IrError};
 use crate::sequence::{Message, MessageArrow, Participant, SequenceDiagram};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// True when source looks like PlantUML (`@startuml` … `@enduml`).
 pub fn is_plantuml(source: &str) -> bool {
@@ -29,7 +29,7 @@ pub fn parse_to_document(source: &str) -> Result<Document, IrError> {
     Ok(Document::single(Diagram::Sequence(parse_sequence(source)?)))
 }
 
-/// Export a Document to PlantUML (sequence and class diagrams only).
+/// Export a Document to PlantUML (sequence, class, and activity-shaped flowcharts).
 pub fn export_document(doc: &Document) -> Result<String, IrError> {
     let supported: Vec<(usize, &Diagram)> = doc
         .diagrams
@@ -37,38 +37,185 @@ pub fn export_document(doc: &Document) -> Result<String, IrError> {
         .enumerate()
         .filter_map(|(i, d)| match d {
             Diagram::Sequence(_) | Diagram::Class(_) => Some((i, d)),
+            Diagram::Flowchart(fc) if is_activity_exportable(fc) => Some((i, d)),
             _ => None,
         })
         .collect();
 
     if supported.is_empty() {
         return Err(IrError::from(
-            "PlantUML export supports sequence and class diagrams only",
+            "PlantUML export supports sequence, class, and activity-shaped flowchart diagrams",
         ));
     }
 
     let multi = doc.diagrams.len() > 1;
-    let blocks: Vec<String> = supported
-        .into_iter()
-        .map(|(i, d)| {
-            let mut block = String::new();
-            if multi {
-                block.push_str(&format!("' diagram {i}: {}\n", d.kind()));
-            }
-            block.push_str(&export_diagram(d));
-            block
-        })
-        .collect();
+    let mut blocks = Vec::new();
+    for (i, d) in supported {
+        let mut block = String::new();
+        if multi {
+            block.push_str(&format!("' diagram {i}: {}\n", d.kind()));
+        }
+        block.push_str(&export_diagram(d)?);
+        blocks.push(block);
+    }
 
     Ok(blocks.join("\n\n"))
 }
 
-fn export_diagram(d: &Diagram) -> String {
+fn export_diagram(d: &Diagram) -> Result<String, IrError> {
     match d {
-        Diagram::Sequence(s) => export_sequence(s),
-        Diagram::Class(c) => export_class(c),
-        _ => String::new(),
+        Diagram::Sequence(s) => Ok(export_sequence(s)),
+        Diagram::Class(c) => Ok(export_class(c)),
+        Diagram::Flowchart(fc) => export_activity(fc),
+        _ => Err(IrError::from("PlantUML export: unsupported diagram kind")),
     }
+}
+
+/// True when a flowchart looks like an activity diagram (has a `start` stadium node).
+pub fn is_activity_exportable(fc: &FcDiagram) -> bool {
+    fc.nodes.iter().any(|n| {
+        n.shape == NodeShape::Stadium && n.text.eq_ignore_ascii_case("start")
+    })
+}
+
+fn export_activity(fc: &FcDiagram) -> Result<String, IrError> {
+    let start = fc
+        .nodes
+        .iter()
+        .find(|n| n.shape == NodeShape::Stadium && n.text.eq_ignore_ascii_case("start"))
+        .ok_or_else(|| IrError::from("activity export: missing start node"))?;
+
+    let mut out = String::from("@startuml\nstart\n");
+    let mut visited = HashSet::new();
+    for edge in outgoing(fc, &start.id) {
+        export_activity_steps(fc, &edge.to, &mut out, &mut visited, None)?;
+    }
+    out.push_str("@enduml\n");
+    Ok(out)
+}
+
+fn export_activity_steps(
+    fc: &FcDiagram,
+    id: &str,
+    out: &mut String,
+    visited: &mut HashSet<String>,
+    stop_at: Option<&str>,
+) -> Result<(), IrError> {
+    if stop_at == Some(id) {
+        return Ok(());
+    }
+    if !visited.insert(id.to_string()) {
+        return Ok(());
+    }
+    let node = fc
+        .nodes
+        .iter()
+        .find(|n| n.id == id)
+        .ok_or_else(|| IrError::from(format!("activity export: unknown node '{id}'")))?;
+
+    if node.shape == NodeShape::Stadium {
+        if node.text.eq_ignore_ascii_case("start") {
+            for edge in outgoing(fc, id) {
+                export_activity_steps(fc, &edge.to, out, visited, stop_at)?;
+            }
+            return Ok(());
+        }
+        if node.text.eq_ignore_ascii_case("stop") || node.text.eq_ignore_ascii_case("end") {
+            out.push_str("stop\n");
+            return Ok(());
+        }
+    }
+
+    if node.shape == NodeShape::Diamond {
+        let edges = outgoing(fc, id);
+        if edges.len() != 2 {
+            return Err(IrError::from(
+                "activity export: decision nodes must have exactly two outgoing branches",
+            ));
+        }
+        let (then_edge, else_edge) = (edges[0], edges[1]);
+        out.push_str(&format!(
+            "if ({}) then ({})\n",
+            node.text, then_edge.label
+        ));
+        let merge = branch_merge(fc, &then_edge.to, &else_edge.to);
+        let mut yes_seen = visited.clone();
+        export_activity_steps(
+            fc,
+            &then_edge.to,
+            out,
+            &mut yes_seen,
+            merge.as_deref(),
+        )?;
+        out.push_str(&format!("else ({})\n", else_edge.label));
+        let mut no_seen = visited.clone();
+        export_activity_steps(fc, &else_edge.to, out, &mut no_seen, merge.as_deref())?;
+        out.push_str("endif\n");
+        visited.extend(yes_seen);
+        visited.extend(no_seen);
+        if let Some(ref merge_id) = merge {
+            if !visited.contains(merge_id) {
+                export_activity_steps(fc, merge_id, out, visited, None)?;
+            }
+        }
+        return Ok(());
+    }
+
+    out.push_str(&format!(":{};\n", node.text));
+    let edges = outgoing(fc, id);
+    match edges.len() {
+        0 => Ok(()),
+        1 => {
+            if stop_at == Some(edges[0].to.as_str()) {
+                Ok(())
+            } else {
+                export_activity_steps(fc, &edges[0].to, out, visited, stop_at)
+            }
+        }
+        _ => Err(IrError::from(format!(
+            "activity export: node '{}' has multiple outgoing edges",
+            node.id
+        ))),
+    }
+}
+
+fn outgoing<'a>(fc: &'a FcDiagram, id: &str) -> Vec<&'a Edge> {
+    fc.edges.iter().filter(|e| e.from == id).collect()
+}
+
+fn branch_merge(fc: &FcDiagram, yes_from: &str, no_from: &str) -> Option<String> {
+    let yes_chain = branch_nodes(fc, yes_from);
+    let no_set: HashSet<_> = branch_nodes(fc, no_from).into_iter().collect();
+    yes_chain
+        .into_iter()
+        .find(|id| no_set.contains(id))
+}
+
+fn branch_nodes(fc: &FcDiagram, start: &str) -> Vec<String> {
+    let mut nodes = vec![start.to_string()];
+    let mut id = start.to_string();
+    loop {
+        let outs = outgoing(fc, &id);
+        if outs.len() != 1 {
+            break;
+        }
+        let next = outs[0].to.clone();
+        let Some(next_node) = fc.nodes.iter().find(|n| n.id == next) else {
+            break;
+        };
+        if next_node.shape == NodeShape::Diamond {
+            break;
+        }
+        if next_node.shape == NodeShape::Stadium
+            && (next_node.text.eq_ignore_ascii_case("stop")
+                || next_node.text.eq_ignore_ascii_case("end"))
+        {
+            break;
+        }
+        id = next;
+        nodes.push(id.clone());
+    }
+    nodes
 }
 
 fn export_sequence(s: &SequenceDiagram) -> String {
@@ -875,6 +1022,34 @@ stop
         assert!(fc.edges.iter().any(|e| e.label == "yes"));
         assert!(fc.edges.iter().any(|e| e.label == "no"));
         assert!(fc.edges.iter().any(|e| e.from.starts_with("act_") && e.to.starts_with("act_")));
+    }
+
+    #[test]
+    fn export_activity_roundtrip() {
+        let src = r#"@startuml
+start
+:A;
+if (ok?) then (yes)
+  :B;
+else (no)
+  :C;
+endif
+:D;
+stop
+@enduml"#;
+        let doc = parse_to_document(src).unwrap();
+        let out = export_document(&doc).unwrap();
+        assert!(out.contains("if (ok?) then (yes)"));
+        assert!(out.contains(":D;"));
+        let doc2 = parse_to_document(&out).unwrap();
+        let Diagram::Flowchart(fc1) = doc.primary().unwrap() else {
+            panic!("expected flowchart");
+        };
+        let Diagram::Flowchart(fc2) = doc2.primary().unwrap() else {
+            panic!("expected flowchart");
+        };
+        assert_eq!(fc1.nodes.len(), fc2.nodes.len());
+        assert_eq!(fc1.edges.len(), fc2.edges.len());
     }
 
     #[test]

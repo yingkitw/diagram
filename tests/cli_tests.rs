@@ -143,7 +143,8 @@ fn test_cli_diff() {
     let right = temp_mmd("graph TD\n    A[Start] --> B[Done]\n    A --> C[New]\n");
     let (stdout, _, code) = run(&["diff", left.to_str().unwrap(), right.to_str().unwrap()]);
     assert_eq!(code, 0);
-    assert!(stdout.contains("added_nodes"), "diff output should contain added_nodes\nstdout: {stdout}");
+    assert!(stdout.contains("entries"), "diff output should contain entries\nstdout: {stdout}");
+    assert!(stdout.contains("added_nodes"), "diff output should contain flowchart added_nodes\nstdout: {stdout}");
     assert!(stdout.contains("C"), "diff output should mention added node C\nstdout: {stdout}");
 }
 
