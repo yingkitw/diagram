@@ -188,6 +188,19 @@ pub enum Cli {
         #[arg(long, help = "Theme: dark or light")]
         theme: Option<String>,
     },
+
+    #[command(about = "Render fenced diagram blocks in Markdown and rewrite image links")]
+    Markdown {
+        path: String,
+        #[arg(long, help = "Directory for rendered diagram images")]
+        output_dir: String,
+        #[arg(long, help = "Output Markdown file (stdout if omitted)")]
+        output: Option<String>,
+        #[arg(long, default_value = "png", help = "Image format: png or svg")]
+        format: String,
+        #[arg(long, help = "Theme: dark or light")]
+        theme: Option<String>,
+    },
 }
 
 impl Cli {
@@ -233,6 +246,13 @@ impl Cli {
                     _ => Theme::Dark,
                 };
                 cmd_preview(path, *port, theme).await
+            }
+            Self::Markdown { path, output_dir, output, format, theme } => {
+                let theme = match theme.as_deref() {
+                    Some("light") => Theme::Light,
+                    _ => Theme::Dark,
+                };
+                cmd_markdown(path, output_dir, output.as_deref(), format, theme)
             }
         }
     }
@@ -521,6 +541,56 @@ fn cmd_merge(left: &str, right: &str, output: &str) -> anyhow::Result<()> {
     let merged = left_diag.merge(&right_diag);
     std::fs::write(output, merged.to_mermaid())?;
     println!("Merged diagram written to {output}");
+    Ok(())
+}
+
+fn cmd_markdown(
+    path: &str,
+    output_dir: &str,
+    output: Option<&str>,
+    format: &str,
+    theme: Theme,
+) -> anyhow::Result<()> {
+    let image_format = crate::markdown::ImageFormat::parse(format)
+        .ok_or_else(|| anyhow::anyhow!("Invalid format '{format}'. Use: png or svg"))?;
+    let input = std::path::Path::new(path);
+    let img_dir = std::path::Path::new(output_dir);
+    let opts = crate::markdown::ProcessOptions {
+        image_format,
+        theme,
+        name_prefix: "doc".into(),
+    };
+
+    match output {
+        Some(out_path) => {
+            let result = crate::markdown::process_markdown_file(
+                input,
+                std::path::Path::new(out_path),
+                img_dir,
+                &opts,
+            )
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+            println!(
+                "Rendered {} diagram(s) → {}",
+                result.blocks_rendered,
+                out_path
+            );
+        }
+        None => {
+            let source = std::fs::read_to_string(input)?;
+            let stem = input
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "doc".into());
+            let mut opts = opts;
+            opts.name_prefix = stem;
+            let out_md = std::path::Path::new("-");
+            let result = crate::markdown::process_markdown(&source, out_md, img_dir, &opts)
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            print!("{}", result.output_markdown);
+            eprintln!("Rendered {} diagram(s) → {}", result.blocks_rendered, output_dir);
+        }
+    }
     Ok(())
 }
 

@@ -7,6 +7,7 @@ pub mod gantt;
 pub mod generate;
 pub mod ir;
 pub mod layout;
+pub mod markdown;
 pub mod mcp;
 pub mod parser;
 pub mod png;

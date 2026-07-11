@@ -40,6 +40,9 @@ diagram diff base.mmd modified.mmd
 # Generate
 diagram create --kind flowchart --output new.mmd
 diagram create --kind sequence --output new.puml
+
+# Markdown docs pipeline
+diagram markdown examples/doc-with-diagrams.md --output-dir assets/diagrams --output guide.rendered.md
 diagram add-node sample.mmd X "New Node" --shape stadium
 diagram mcp   # agent tools over stdio
 ```

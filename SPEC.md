@@ -125,6 +125,7 @@ Commands:
   create       Create a new diagram scaffold
   diff         Compare two diagrams
   merge        Merge two diagrams
+  markdown     Render fenced diagram blocks; rewrite image links
   preview      Live browser SVG preview
 ```
 
@@ -142,6 +143,7 @@ All tools accept `path` (path to `.mmd` file) plus operation-specific parameters
 | `create_diagram` | kind, output | Status JSON |
 | `render_svg` | path, theme? | SVG string |
 | `render_png` | path, output, theme? | Status JSON |
+| `process_markdown` | path, output_dir, output, format?, theme? | Status JSON |
 | `diff_diagram` | left, right | Diff JSON |
 | `merge_diagram` | left, right, output | Status JSON |
 | `add_node` | path, id, text, shape? | Status JSON |
@@ -220,6 +222,7 @@ pub mod gantt;
 pub mod generate;
 pub mod ir;
 pub mod layout;
+pub mod markdown;
 pub mod mcp;
 pub mod parser;
 pub mod png;

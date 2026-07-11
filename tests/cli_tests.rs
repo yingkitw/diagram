@@ -175,6 +175,32 @@ fn test_cli_preview_help() {
 }
 
 #[test]
+fn test_cli_markdown_pipeline() {
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/doc-with-diagrams.md");
+    let dir = std::env::temp_dir().join(format!("diagram_md_cli_{}", std::process::id()));
+    let img_dir = dir.join("assets");
+    let out_md = dir.join("rendered.md");
+    std::fs::create_dir_all(&img_dir).unwrap();
+    let (_, _, code) = run(&[
+        "markdown",
+        src.to_str().unwrap(),
+        "--output-dir",
+        img_dir.to_str().unwrap(),
+        "--output",
+        out_md.to_str().unwrap(),
+        "--format",
+        "png",
+    ]);
+    assert_eq!(code, 0);
+    let body = std::fs::read_to_string(&out_md).unwrap();
+    assert!(body.contains("![diagram 0]"));
+    assert!(!body.contains("```mermaid"));
+    assert!(img_dir.join("doc-with-diagrams-0.png").exists());
+    assert!(img_dir.join("doc-with-diagrams-1.png").exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn test_cli_render_png() {
     let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.mmd");
     let out = std::env::temp_dir().join(format!("diagram_render_{}.png", std::process::id()));

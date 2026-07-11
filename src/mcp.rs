@@ -23,6 +23,20 @@ struct CreateParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct MarkdownParams {
+    #[schemars(description = "Input Markdown file path")]
+    path: String,
+    #[schemars(description = "Directory for rendered diagram images")]
+    output_dir: String,
+    #[schemars(description = "Output Markdown file path")]
+    output: String,
+    #[schemars(description = "Image format: png or svg")]
+    format: Option<String>,
+    #[schemars(description = "Theme: dark or light")]
+    theme: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct RenderPngParams {
     #[schemars(description = "Path to the diagram file")]
     path: String,
@@ -318,6 +332,49 @@ impl DiagramServer {
         };
         match crate::preview::render_file(&params.path, theme) {
             Ok(svg) => CallToolResult::success(vec![ContentBlock::text(svg)]),
+            Err(e) => CallToolResult::error(vec![ContentBlock::text(e)]),
+        }
+    }
+
+    #[tool(description = "Render fenced diagram blocks in Markdown and rewrite image links")]
+    async fn process_markdown(
+        &self,
+        Parameters(params): Parameters<MarkdownParams>,
+    ) -> CallToolResult {
+        let image_format = match params.format.as_deref().unwrap_or("png") {
+            "png" => crate::markdown::ImageFormat::Png,
+            "svg" => crate::markdown::ImageFormat::Svg,
+            s => {
+                return CallToolResult::error(vec![ContentBlock::text(format!(
+                    "Invalid format '{s}'. Use: png or svg"
+                ))]);
+            }
+        };
+        let theme = match params.theme.as_deref() {
+            Some("light") => renderer::Theme::Light,
+            _ => renderer::Theme::Dark,
+        };
+        let opts = crate::markdown::ProcessOptions {
+            image_format,
+            theme,
+            name_prefix: "doc".into(),
+        };
+        match crate::markdown::process_markdown_file(
+            std::path::Path::new(&params.path),
+            std::path::Path::new(&params.output),
+            std::path::Path::new(&params.output_dir),
+            &opts,
+        ) {
+            Ok(result) => CallToolResult::success(vec![ContentBlock::text(
+                serde_json::json!({
+                    "status": "ok",
+                    "blocks_rendered": result.blocks_rendered,
+                    "output": params.output,
+                    "output_dir": params.output_dir,
+                    "images": result.rendered.iter().map(|r| r.link.clone()).collect::<Vec<_>>(),
+                })
+                .to_string(),
+            )]),
             Err(e) => CallToolResult::error(vec![ContentBlock::text(e)]),
         }
     }
