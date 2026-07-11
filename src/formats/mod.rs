@@ -2,6 +2,7 @@
 
 pub mod dot;
 pub mod mermaid;
+pub mod plantuml;
 
 use crate::ir::{Document, IrError};
 
@@ -11,6 +12,7 @@ pub enum Format {
     Mermaid,
     JsonIr,
     Dot,
+    PlantUml,
 }
 
 impl Format {
@@ -19,6 +21,7 @@ impl Format {
             "mermaid" | "mmd" => Some(Self::Mermaid),
             "json" | "ir" | "json-ir" | "json_ir" => Some(Self::JsonIr),
             "dot" | "graphviz" | "gv" => Some(Self::Dot),
+            "plantuml" | "puml" => Some(Self::PlantUml),
             _ => None,
         }
     }
@@ -28,6 +31,7 @@ impl Format {
             Self::Mermaid => "mermaid",
             Self::JsonIr => "json",
             Self::Dot => "dot",
+            Self::PlantUml => "plantuml",
         }
     }
 }
@@ -37,6 +41,9 @@ pub fn detect(source: &str, path: Option<&str>) -> Format {
     let trimmed = source.trim_start();
     if trimmed.starts_with('{') {
         return Format::JsonIr;
+    }
+    if plantuml::is_plantuml(source) {
+        return Format::PlantUml;
     }
     if dot::is_dot(source) {
         return Format::Dot;
@@ -48,6 +55,9 @@ pub fn detect(source: &str, path: Option<&str>) -> Format {
         }
         if lower.ends_with(".dot") || lower.ends_with(".gv") {
             return Format::Dot;
+        }
+        if lower.ends_with(".puml") || lower.ends_with(".plantuml") {
+            return Format::PlantUml;
         }
         if lower.ends_with(".mmd") || lower.ends_with(".mermaid") {
             return Format::Mermaid;
@@ -63,6 +73,7 @@ pub fn import_str(source: &str, format: Format) -> Result<Document, IrError> {
         Format::JsonIr => Document::from_json(source)
             .map_err(|e| IrError::from(format!("invalid JSON IR: {e}"))),
         Format::Dot => dot::parse_to_document(source),
+        Format::PlantUml => plantuml::parse_to_document(source),
     }
 }
 
@@ -74,6 +85,7 @@ pub fn export_str(doc: &Document, format: Format) -> Result<String, IrError> {
             .to_json()
             .map_err(|e| IrError::from(format!("JSON serialize failed: {e}"))),
         Format::Dot => Err(IrError::from("DOT export is not supported yet")),
+        Format::PlantUml => Err(IrError::from("PlantUML export is not supported yet")),
     }
 }
 
@@ -127,6 +139,15 @@ mod tests {
         let out = export_str(&doc, Format::Mermaid).unwrap();
         assert!(out.contains("Start"));
         assert!(out.contains("B"));
+    }
+
+    #[test]
+    fn plantuml_sequence_import() {
+        let src = "@startuml\nAlice -> Bob: hi\n@enduml";
+        let doc = import_str(src, Format::PlantUml).unwrap();
+        let out = export_str(&doc, Format::Mermaid).unwrap();
+        assert!(out.contains("sequenceDiagram"));
+        assert!(out.contains("hi"));
     }
 
     #[test]

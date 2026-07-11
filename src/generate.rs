@@ -32,6 +32,11 @@ pub fn mermaid_scaffold(kind: Kind) -> &'static str {
     }
 }
 
+/// Minimal PlantUML sequence scaffold.
+pub fn plantuml_sequence_scaffold() -> &'static str {
+    "@startuml\nparticipant A\nparticipant B\nA -> B: Message\n@enduml\n"
+}
+
 /// Minimal DOT digraph scaffold for flowcharts.
 pub fn dot_scaffold() -> &'static str {
     "digraph G {\n    A [label=\"Start\"];\n    B [label=\"End\"];\n    A -> B;\n}\n"
@@ -65,6 +70,15 @@ pub fn write_scaffold(kind_str: &str, path: &str) -> Result<Kind, String> {
                 ));
             }
             std::fs::write(path, dot_scaffold())
+                .map_err(|e| format!("Failed to write '{path}': {e}"))?;
+        }
+        Format::PlantUml => {
+            if kind != Kind::Sequence {
+                return Err(format!(
+                    "PlantUML scaffolds only support sequence (got {kind})"
+                ));
+            }
+            std::fs::write(path, plantuml_sequence_scaffold())
                 .map_err(|e| format!("Failed to write '{path}': {e}"))?;
         }
     }

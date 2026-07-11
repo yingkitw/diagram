@@ -19,7 +19,7 @@ pub enum Cli {
         path: String,
         #[arg(long, short, help = "Output JSON IR file")]
         output: String,
-        #[arg(long, help = "Source format: mermaid, json, or dot (auto-detect if omitted)")]
+        #[arg(long, help = "Source format: mermaid, json, dot, or plantuml (auto-detect if omitted)")]
         from: Option<String>,
     },
 
@@ -260,7 +260,7 @@ fn cmd_ir(path: &str) -> anyhow::Result<()> {
 
 fn parse_format(s: &str) -> anyhow::Result<crate::formats::Format> {
     crate::formats::Format::parse(s)
-        .ok_or_else(|| anyhow::anyhow!("Invalid format '{s}'. Use: mermaid, json, dot"))
+        .ok_or_else(|| anyhow::anyhow!("Invalid format '{s}'. Use: mermaid, json, dot, plantuml"))
 }
 
 fn cmd_import(path: &str, output: &str, from: Option<&str>) -> anyhow::Result<()> {

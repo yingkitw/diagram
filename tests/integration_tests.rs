@@ -422,6 +422,17 @@ fn test_gantt_example_parse_and_render() {
 }
 
 #[test]
+fn test_plantuml_example_parse_and_render() {
+    let path = examples_dir().join("sequence.puml");
+    let doc = diagram::ir::load_path(path.to_str().unwrap()).unwrap();
+    assert_eq!(doc.primary().unwrap().kind(), diagram::ir::Kind::Sequence);
+    let svg = diagram::preview::render_file(path.to_str().unwrap(), diagram::renderer::Theme::Dark)
+        .unwrap();
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("Alice"));
+}
+
+#[test]
 fn test_dot_example_parse_and_render() {
     let path = examples_dir().join("simple-flowchart.dot");
     let doc = diagram::ir::load_path(path.to_str().unwrap()).unwrap();

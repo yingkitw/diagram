@@ -30,7 +30,7 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 
 ## Medium-term (interchange + render)
 
-- [ ] PlantUML adapter MVP (activity/sequence or class — pick one kind first)
+- [x] PlantUML adapter MVP (sequence → sequence IR; class/activity later)
 - [x] Graphviz DOT import (digraph subset) → flowchart IR
 - [ ] PNG export (resvg or similar; keep binary lean)
 - [ ] Multi-diagram Document (several kinds / figures per file)

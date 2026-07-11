@@ -27,7 +27,7 @@ diagram parse sample.mmd
 diagram ir sample.mmd
 
 # Import / export interchange
-diagram import sample.dot --output sample.ir.json --from dot
+diagram import examples/sequence.puml --output sample.ir.json
 diagram export sample.ir.json --output out.mmd --to mermaid
 
 # Analyze
@@ -38,7 +38,7 @@ diagram diff base.mmd modified.mmd
 
 # Generate
 diagram create --kind flowchart --output new.mmd
-diagram create --kind sequence --output new.json
+diagram create --kind sequence --output new.puml
 diagram add-node sample.mmd X "New Node" --shape stadium
 diagram mcp   # agent tools over stdio
 ```
@@ -50,7 +50,7 @@ diagram mcp   # agent tools over stdio
 | Mermaid (`.mmd`) | Primary import + roundtrip for flowchart/sequence/class/gantt | Keep high Compatibility |
 | Native JSON IR | Canonical interchange (`diagram ir`, `import`/`export`) | Stable |
 | SVG | Render export | Stable |
-| PlantUML | — | Import/export adapter (planned) |
+| PlantUML (`.puml`) | Sequence import → sequence IR (MVP) | Class, activity, export |
 | Graphviz DOT (`.dot`) | Import → flowchart IR (digraph subset) | Expand subset; export later |
 | PNG / PDF | — | Render export (planned) |
 

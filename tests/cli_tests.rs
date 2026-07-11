@@ -258,6 +258,22 @@ fn test_cli_create_flowchart() {
 }
 
 #[test]
+fn test_cli_import_plantuml() {
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/sequence.puml");
+    let json_out = std::env::temp_dir().join(format!("diagram_puml_ir_{}.json", std::process::id()));
+    let (_, _, code) = run(&[
+        "import",
+        src.to_str().unwrap(),
+        "--output",
+        json_out.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0);
+    let body = std::fs::read_to_string(&json_out).unwrap();
+    assert!(body.contains("\"kind\": \"sequence\""), "body: {body}");
+    let _ = std::fs::remove_file(&json_out);
+}
+
+#[test]
 fn test_cli_import_dot() {
     let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.dot");
     let json_out = std::env::temp_dir().join(format!("diagram_dot_ir_{}.json", std::process::id()));

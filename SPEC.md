@@ -2,7 +2,7 @@
 
 ## Overview
 
-`diagram` is a Rust CLI and MCP **diagram platform**: render, generate, analyze, and interchange diagrams via a canonical **IR**, with **Compatibility** adapters for Mermaid (today) and PlantUML/DOT/D2 (planned). See `CONTEXT.md` and `docs/adr/0001-canonical-ir-and-format-adapters.md`.
+`diagram` is a Rust CLI and MCP **diagram platform**: render, generate, analyze, and interchange diagrams via a canonical **IR**, with **Compatibility** adapters for Mermaid, Graphviz DOT (import), PlantUML sequence (import), and more planned. See `CONTEXT.md` and `docs/adr/0001-canonical-ir-and-format-adapters.md`.
 
 **Current shipping surface:** Mermaid or JSON IR → `Document`; parse/ir/import/export; info/render/preview; flowchart generate/edit; validate/diff/merge; SVG export.
 
@@ -103,7 +103,7 @@ diagram <COMMAND>
 Commands:
   parse        Parse and print canonical JSON IR
   ir           Alias for parse (canonical JSON IR)
-  import       Import Mermaid/DOT/JSON → JSON IR file
+  import       Import Mermaid/DOT/PlantUML/JSON → JSON IR file
   export       Export diagram → Mermaid or JSON IR
   info         Show diagram summary
   render       Render as SVG (use --watch and --theme)
