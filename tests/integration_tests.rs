@@ -449,6 +449,18 @@ fn test_dot_example_parse_and_render() {
 }
 
 #[test]
+fn test_multi_document_composite_render() {
+    let path = examples_dir().join("multi-document.json");
+    let doc = diagram::ir::load_path(path.to_str().unwrap()).unwrap();
+    assert_eq!(doc.diagrams.len(), 2);
+    let svg = doc.render_svg(diagram::renderer::Theme::Dark).unwrap();
+    assert!(svg.matches("<svg").count() >= 1);
+    let mmd = doc.to_mermaid().unwrap();
+    let doc2 = diagram::formats::import_str(&mmd, diagram::formats::Format::Mermaid).unwrap();
+    assert_eq!(doc2.diagrams.len(), 2);
+}
+
+#[test]
 fn test_render_flowchart_png_file() {
     let path = examples_dir().join("simple-flowchart.mmd");
     let out = std::env::temp_dir().join(format!("diagram_int_png_{}.png", std::process::id()));

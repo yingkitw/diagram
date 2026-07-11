@@ -1,0 +1,139 @@
+{
+  "version": 1,
+  "diagrams": [
+    {
+      "kind": "flowchart",
+      "data": {
+        "rankdir": "TB",
+        "nodes": [
+          {
+            "id": "A",
+            "text": "Start",
+            "shape": "Rect",
+            "href": null,
+            "tooltip": null
+          },
+          {
+            "id": "B",
+            "text": "Is it working?",
+            "shape": "Diamond",
+            "href": null,
+            "tooltip": null
+          },
+          {
+            "id": "C",
+            "text": "Great!",
+            "shape": "Rect",
+            "href": null,
+            "tooltip": null
+          },
+          {
+            "id": "D",
+            "text": "Debug",
+            "shape": "Rect",
+            "href": null,
+            "tooltip": null
+          },
+          {
+            "id": "E",
+            "text": "Fix Issue",
+            "shape": "Rect",
+            "href": null,
+            "tooltip": null
+          },
+          {
+            "id": "F",
+            "text": "End",
+            "shape": "Rect",
+            "href": null,
+            "tooltip": null
+          }
+        ],
+        "edges": [
+          {
+            "from": "A",
+            "to": "B",
+            "label": "",
+            "style": "Arrow"
+          },
+          {
+            "from": "B",
+            "to": "C",
+            "label": "Yes",
+            "style": "Arrow"
+          },
+          {
+            "from": "B",
+            "to": "D",
+            "label": "No",
+            "style": "Arrow"
+          },
+          {
+            "from": "D",
+            "to": "E",
+            "label": "",
+            "style": "Arrow"
+          },
+          {
+            "from": "E",
+            "to": "B",
+            "label": "",
+            "style": "Arrow"
+          },
+          {
+            "from": "C",
+            "to": "F",
+            "label": "",
+            "style": "Arrow"
+          }
+        ],
+        "subgraphs": [],
+        "styles": [],
+        "class_defs": [],
+        "class_applies": [],
+        "link_styles": []
+      }
+    },
+    {
+      "kind": "sequence",
+      "data": {
+        "participants": [
+          {
+            "id": "Alice",
+            "label": "Alice"
+          },
+          {
+            "id": "Bob",
+            "label": "Bob Server"
+          }
+        ],
+        "messages": [
+          {
+            "from": "Alice",
+            "to": "Bob",
+            "text": "Hello Bob",
+            "arrow": "Solid"
+          },
+          {
+            "from": "Bob",
+            "to": "Alice",
+            "text": "Hi Alice",
+            "arrow": "Dashed"
+          },
+          {
+            "from": "Alice",
+            "to": "Bob",
+            "text": "How are you?",
+            "arrow": "Solid"
+          },
+          {
+            "from": "Bob",
+            "to": "Alice",
+            "text": "Great thanks",
+            "arrow": "Dashed"
+          }
+        ]
+      }
+    }
+  ]
+}

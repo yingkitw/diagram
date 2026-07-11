@@ -23,9 +23,45 @@ pub fn parse(source: &str) -> Result<Diagram, IrError> {
     }
 }
 
-/// Parse Mermaid source into a single-diagram Document.
+/// Parse Mermaid source into a Document (supports `%% diagram N:` multi-chunk files).
 pub fn parse_to_document(source: &str) -> Result<Document, IrError> {
-    Ok(Document::single(parse(source)?))
+    let chunks = split_mermaid_chunks(source);
+    if chunks.len() == 1 {
+        return Ok(Document::single(parse(&chunks[0])?));
+    }
+    let diagrams: Result<Vec<Diagram>, IrError> = chunks.iter().map(|c| parse(c)).collect();
+    Ok(Document {
+        version: Document::CURRENT_VERSION,
+        diagrams: diagrams?,
+    })
+}
+
+/// Split a Mermaid file on `%% diagram N:` markers.
+pub fn split_mermaid_chunks(source: &str) -> Vec<String> {
+    if !source.contains("%% diagram ") {
+        return vec![source.to_string()];
+    }
+    let mut chunks: Vec<String> = Vec::new();
+    let mut current = String::new();
+    for line in source.lines() {
+        if line.trim().starts_with("%% diagram ") {
+            if !current.trim().is_empty() {
+                chunks.push(current.trim().to_string());
+                current.clear();
+            }
+            continue;
+        }
+        current.push_str(line);
+        current.push('\n');
+    }
+    if !current.trim().is_empty() {
+        chunks.push(current.trim().to_string());
+    }
+    if chunks.is_empty() {
+        vec![source.to_string()]
+    } else {
+        chunks
+    }
 }
 
 #[cfg(test)]
@@ -40,8 +76,11 @@ mod tests {
     }
 
     #[test]
-    fn parse_sequence_kind() {
-        let d = parse("sequenceDiagram\n  A->>B: hi\n").unwrap();
-        assert_eq!(d.kind(), Kind::Sequence);
+    fn parse_multi_chunk_document() {
+        let src = "%% diagram 0: flowchart\ngraph TD\n  A-->B\n\n%% diagram 1: sequence\nsequenceDiagram\n  A->>B: hi\n";
+        let doc = parse_to_document(src).unwrap();
+        assert_eq!(doc.diagrams.len(), 2);
+        assert_eq!(doc.diagrams[0].kind(), Kind::Flowchart);
+        assert_eq!(doc.diagrams[1].kind(), Kind::Sequence);
     }
 }

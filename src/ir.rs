@@ -102,19 +102,41 @@ impl Document {
     }
 
     pub fn to_mermaid(&self) -> Result<String, String> {
-        match self.diagrams.as_slice() {
-            [] => Err("document has no diagrams".into()),
-            [one] => Ok(one.to_mermaid()),
-            _ => Err("multi-diagram Mermaid export not supported yet".into()),
+        if self.diagrams.is_empty() {
+            return Err("document has no diagrams".into());
         }
+        if self.diagrams.len() == 1 {
+            return Ok(self.diagrams[0].to_mermaid());
+        }
+        Ok(self
+            .diagrams
+            .iter()
+            .enumerate()
+            .map(|(i, d)| format!("%% diagram {i}: {}\n{}", d.kind(), d.to_mermaid()))
+            .collect::<Vec<_>>()
+            .join("\n\n"))
     }
 
     pub fn render_svg(&self, theme: Theme) -> Result<String, String> {
-        match self.diagrams.as_slice() {
-            [] => Err("document has no diagrams".into()),
-            [one] => Ok(one.render_svg(theme)),
-            _ => Err("multi-diagram render not supported yet".into()),
+        if self.diagrams.is_empty() {
+            return Err("document has no diagrams".into());
         }
+        if self.diagrams.len() == 1 {
+            return Ok(self.diagrams[0].render_svg(theme));
+        }
+        let svgs: Vec<String> = self
+            .diagrams
+            .iter()
+            .map(|d| d.render_svg(theme))
+            .collect();
+        crate::composite::combine_svgs(&svgs)
+    }
+
+    pub fn render_diagram_at(&self, index: usize, theme: Theme) -> Result<String, String> {
+        self.diagrams
+            .get(index)
+            .map(|d| d.render_svg(theme))
+            .ok_or_else(|| format!("diagram index {index} out of range (0..{})", self.diagrams.len()))
     }
 }
 
@@ -125,10 +147,23 @@ pub fn info_lines(path: &str, doc: &Document) -> Vec<String> {
         format!("IR version: {}", doc.version),
         format!("Diagrams: {}", doc.diagrams.len()),
     ];
-    let Some(d) = doc.primary() else {
+    if doc.diagrams.is_empty() {
         return lines;
-    };
+    }
+    if doc.diagrams.len() > 1 {
+        for (i, d) in doc.diagrams.iter().enumerate() {
+            lines.push(format!("Diagram {i}: {}", d.kind()));
+            lines.extend(diagram_summary_lines(d));
+        }
+        return lines;
+    }
+    let d = &doc.diagrams[0];
     lines.push(format!("Kind: {}", d.kind()));
+    lines.extend(diagram_summary_lines(d));
+    lines
+}
+
+fn diagram_summary_lines(d: &Diagram) -> Vec<String> {
     match d {
         Diagram::Flowchart(fc) => {
             let mut shapes = [0usize; 6];
@@ -142,43 +177,70 @@ pub fn info_lines(path: &str, doc: &Document) -> Vec<String> {
                     flowchart::NodeShape::Circle => 5,
                 }] += 1;
             }
-            lines.push(format!("Direction: {}", fc.rankdir));
-            lines.push(format!("Nodes: {}", fc.nodes.len()));
-            lines.push(format!("  rect:     {}", shapes[0]));
-            lines.push(format!("  diamond:  {}", shapes[1]));
-            lines.push(format!("  stadium:  {}", shapes[2]));
-            lines.push(format!("  hexagon:  {}", shapes[3]));
-            lines.push(format!("  cylinder: {}", shapes[4]));
-            lines.push(format!("  circle:   {}", shapes[5]));
-            lines.push(format!("Edges: {}", fc.edges.len()));
+            vec![
+                format!("Direction: {}", fc.rankdir),
+                format!("Nodes: {}", fc.nodes.len()),
+                format!("  rect:     {}", shapes[0]),
+                format!("  diamond:  {}", shapes[1]),
+                format!("  stadium:  {}", shapes[2]),
+                format!("  hexagon:  {}", shapes[3]),
+                format!("  cylinder: {}", shapes[4]),
+                format!("  circle:   {}", shapes[5]),
+                format!("Edges: {}", fc.edges.len()),
+            ]
         }
-        Diagram::Sequence(s) => {
-            lines.push(format!("Participants: {}", s.participants.len()));
-            lines.push(format!("Messages: {}", s.messages.len()));
-        }
-        Diagram::Class(c) => {
-            lines.push(format!("Classes: {}", c.classes.len()));
-            lines.push(format!("Relations: {}", c.relations.len()));
-        }
+        Diagram::Sequence(s) => vec![
+            format!("Participants: {}", s.participants.len()),
+            format!("Messages: {}", s.messages.len()),
+        ],
+        Diagram::Class(c) => vec![
+            format!("Classes: {}", c.classes.len()),
+            format!("Relations: {}", c.relations.len()),
+        ],
         Diagram::Gantt(g) => {
+            let mut out = vec![format!("Tasks: {}", g.tasks.len())];
             if !g.title.is_empty() {
-                lines.push(format!("Title: {}", g.title));
+                out.insert(0, format!("Title: {}", g.title));
             }
-            lines.push(format!("Tasks: {}", g.tasks.len()));
+            out
         }
     }
-    lines
 }
 
 /// JSON summary for MCP `get_info`.
 pub fn info_json(path: &str, doc: &Document) -> serde_json::Value {
-    let Some(d) = doc.primary() else {
+    if doc.diagrams.is_empty() {
+        return serde_json::json!({
+            "path": path,
+            "ir_version": doc.version,
+            "diagrams": 0,
+        });
+    }
+    if doc.diagrams.len() > 1 {
         return serde_json::json!({
             "path": path,
             "ir_version": doc.version,
             "diagrams": doc.diagrams.len(),
+            "kind": "multi",
+            "entries": doc.diagrams.iter().enumerate().map(|(i, d)| {
+                let mut entry = diagram_info_json(d);
+                if let serde_json::Value::Object(ref mut map) = entry {
+                    map.insert("index".into(), serde_json::json!(i));
+                }
+                entry
+            }).collect::<Vec<_>>(),
         });
-    };
+    }
+    let mut value = diagram_info_json(&doc.diagrams[0]);
+    if let serde_json::Value::Object(ref mut map) = value {
+        map.insert("path".into(), serde_json::json!(path));
+        map.insert("ir_version".into(), serde_json::json!(doc.version));
+        map.insert("diagrams".into(), serde_json::json!(1));
+    }
+    value
+}
+
+fn diagram_info_json(d: &Diagram) -> serde_json::Value {
     match d {
         Diagram::Flowchart(fc) => {
             let mut shapes = [0usize; 6];
@@ -193,9 +255,6 @@ pub fn info_json(path: &str, doc: &Document) -> serde_json::Value {
                 }] += 1;
             }
             serde_json::json!({
-                "path": path,
-                "ir_version": doc.version,
-                "diagrams": doc.diagrams.len(),
                 "kind": "flowchart",
                 "direction": fc.rankdir,
                 "nodes": fc.nodes.len(),
@@ -211,25 +270,16 @@ pub fn info_json(path: &str, doc: &Document) -> serde_json::Value {
             })
         }
         Diagram::Sequence(s) => serde_json::json!({
-            "path": path,
-            "ir_version": doc.version,
-            "diagrams": doc.diagrams.len(),
             "kind": "sequence",
             "participants": s.participants.len(),
             "messages": s.messages.len(),
         }),
         Diagram::Class(c) => serde_json::json!({
-            "path": path,
-            "ir_version": doc.version,
-            "diagrams": doc.diagrams.len(),
             "kind": "class",
             "classes": c.classes.len(),
             "relations": c.relations.len(),
         }),
         Diagram::Gantt(g) => serde_json::json!({
-            "path": path,
-            "ir_version": doc.version,
-            "diagrams": doc.diagrams.len(),
             "kind": "gantt",
             "title": g.title,
             "tasks": g.tasks.len(),
@@ -293,9 +343,24 @@ mod tests {
     }
 
     #[test]
-    fn sequence_kind() {
-        let doc = from_mermaid("sequenceDiagram\n  A->>B: hi\n").unwrap();
-        assert_eq!(doc.primary().unwrap().kind(), Kind::Sequence);
-        assert!(doc.render_svg(Theme::Dark).unwrap().contains("<svg"));
+    fn multi_document_render_and_mermaid() {
+        let doc = Document {
+            version: 1,
+            diagrams: vec![
+                Diagram::Flowchart(
+                    crate::parser::parse("graph TD\n  A-->B\n").unwrap(),
+                ),
+                Diagram::Sequence(
+                    crate::sequence::parse("sequenceDiagram\n  A->>B: hi\n").unwrap(),
+                ),
+            ],
+        };
+        let mmd = doc.to_mermaid().unwrap();
+        assert!(mmd.contains("%% diagram 0:"));
+        assert!(mmd.contains("%% diagram 1:"));
+        let svg = doc.render_svg(Theme::Dark).unwrap();
+        assert!(svg.contains("<svg"));
+        let roundtrip = crate::formats::mermaid::parse_to_document(&mmd).unwrap();
+        assert_eq!(roundtrip.diagrams.len(), 2);
     }
 }

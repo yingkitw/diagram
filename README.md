@@ -19,8 +19,9 @@ Today’s parsers speak Mermaid (flowchart, sequence, class, gantt). The roadmap
 cargo install --path .
 
 # Render (auto-detects kind)
-diagram render sample.mmd --output out.png
-diagram render sample.mmd --output out.svg
+diagram render examples/multi-document.json --output all.svg
+diagram render examples/multi-document.json --output-dir figures/
+diagram render examples/multi-document.json --index 1 --output seq.svg
 diagram preview sample.mmd
 
 # Parse canonical JSON IR

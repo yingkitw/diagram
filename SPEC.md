@@ -20,7 +20,7 @@
 }
 ```
 
-`kind` values: `flowchart`, `sequence`, `class`, `gantt`. Multi-diagram `diagrams[]` is schema-ready; single-diagram export/render today.
+`kind` values: `flowchart`, `sequence`, `class`, `gantt`. Multi-diagram `diagrams[]` is supported for JSON IR import, composite render, per-index render, and Mermaid export with `%% diagram N:` markers.
 
 ## Platform contracts
 

@@ -10,6 +10,42 @@ pub fn render_file(path: &str, theme: Theme) -> Result<String, String> {
     doc.render_svg(theme)
 }
 
+/// Write each diagram in a document to separate files in a directory.
+pub fn write_render_outputs_to_dir(
+    diagram_path: &str,
+    output_dir: &std::path::Path,
+    theme: Theme,
+    png: bool,
+) -> Result<Vec<std::path::PathBuf>, String> {
+    let doc = crate::ir::load_path(diagram_path).map_err(|e| e.to_string())?;
+    if doc.diagrams.is_empty() {
+        return Err("document has no diagrams".into());
+    }
+    std::fs::create_dir_all(output_dir)
+        .map_err(|e| format!("Failed to create '{}': {e}", output_dir.display()))?;
+    let stem = std::path::Path::new(diagram_path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "diagram".into());
+    let ext = if png { "png" } else { "svg" };
+    let mut paths = Vec::new();
+    for i in 0..doc.diagrams.len() {
+        let svg = doc.render_diagram_at(i, theme)?;
+        let filename = format!("{stem}-{i}.{ext}");
+        let path = output_dir.join(&filename);
+        if png {
+            let bytes = crate::png::svg_to_png(&svg)?;
+            std::fs::write(&path, bytes)
+                .map_err(|e| format!("Failed to write '{}': {e}", path.display()))?;
+        } else {
+            std::fs::write(&path, svg)
+                .map_err(|e| format!("Failed to write '{}': {e}", path.display()))?;
+        }
+        paths.push(path);
+    }
+    Ok(paths)
+}
+
 /// Write rendered output to a path (`.png` → PNG, otherwise SVG).
 pub fn write_render_output(path: &str, diagram_path: &str, theme: Theme) -> Result<(), String> {
     let svg = render_file(diagram_path, theme)?;

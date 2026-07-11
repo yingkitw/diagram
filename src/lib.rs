@@ -1,6 +1,7 @@
 pub mod analyze;
 pub mod class;
 pub mod cli;
+pub mod composite;
 pub mod diagram;
 pub mod formats;
 pub mod gantt;

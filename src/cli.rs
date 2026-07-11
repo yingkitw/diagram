@@ -42,6 +42,10 @@ pub enum Cli {
         path: String,
         #[arg(long, help = "Output file path: .svg or .png (prints SVG to stdout if not set)")]
         output: Option<String>,
+        #[arg(long, help = "Render each diagram to separate files in this directory")]
+        output_dir: Option<String>,
+        #[arg(long, help = "Render only diagram index (0-based) from multi-diagram IR")]
+        index: Option<usize>,
         #[arg(long, help = "Watch file for changes and re-render automatically")]
         watch: bool,
         #[arg(long, help = "Theme: dark or light")]
@@ -211,15 +215,15 @@ impl Cli {
             Self::Import { path, output, from } => cmd_import(path, output, from.as_deref()),
             Self::Export { path, output, to } => cmd_export(path, output, to.as_deref()),
             Self::Info { path } => cmd_info(path),
-            Self::Render { path, output, watch, theme } => {
+            Self::Render { path, output, output_dir, index, watch, theme } => {
                 let theme = match theme.as_deref() {
                     Some("light") => Theme::Light,
                     _ => Theme::Dark,
                 };
                 if *watch {
-                    cmd_render_watch(path, output.as_deref(), theme).await
+                    cmd_render_watch(path, output.as_deref(), output_dir.as_deref(), *index, theme).await
                 } else {
-                    cmd_render(path, output.as_deref(), theme)
+                    cmd_render(path, output.as_deref(), output_dir.as_deref(), *index, theme)
                 }
             }
             Self::Mcp => cmd_mcp().await,
@@ -311,26 +315,62 @@ fn cmd_info(path: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn cmd_render(path: &str, output: Option<&str>, theme: Theme) -> anyhow::Result<()> {
+fn cmd_render(
+    path: &str,
+    output: Option<&str>,
+    output_dir: Option<&str>,
+    index: Option<usize>,
+    theme: Theme,
+) -> anyhow::Result<()> {
+    let doc = crate::ir::load_path(path).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    if let Some(dir) = output_dir {
+        let png = output.is_some_and(crate::png::output_is_png);
+        let paths = crate::preview::write_render_outputs_to_dir(
+            path,
+            std::path::Path::new(dir),
+            theme,
+            png,
+        )
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        println!("Rendered {} diagram(s) → {}", paths.len(), dir);
+        return Ok(());
+    }
+
+    let svg = if let Some(idx) = index {
+        doc.render_diagram_at(idx, theme)
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+    } else {
+        doc.render_svg(theme).map_err(|e| anyhow::anyhow!("{e}"))?
+    };
+
     match output {
         Some(out_path) => {
-            crate::preview::write_render_output(out_path, path, theme)
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            if crate::png::output_is_png(out_path) {
+                let png = crate::png::svg_to_png(&svg).map_err(|e| anyhow::anyhow!("{e}"))?;
+                std::fs::write(out_path, png)?;
+            } else {
+                std::fs::write(out_path, &svg)?;
+            }
         }
-        None => {
-            let svg = crate::preview::render_file(path, theme).map_err(|e| anyhow::anyhow!("{e}"))?;
-            println!("{svg}");
-        }
+        None => println!("{svg}"),
     }
     Ok(())
 }
 
-async fn cmd_render_watch(path: &str, output: Option<&str>, theme: Theme) -> anyhow::Result<()> {
-    cmd_render(path, output, theme)?;
+async fn cmd_render_watch(
+    path: &str,
+    output: Option<&str>,
+    output_dir: Option<&str>,
+    index: Option<usize>,
+    theme: Theme,
+) -> anyhow::Result<()> {
+    cmd_render(path, output, output_dir, index, theme)?;
     eprintln!("Watching {path} for changes... (press Ctrl+C to stop)");
 
     let path = path.to_string();
     let output = output.map(|s| s.to_string());
+    let output_dir = output_dir.map(|s| s.to_string());
 
     tokio::task::spawn_blocking(move || {
         use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
@@ -343,7 +383,13 @@ async fn cmd_render_watch(path: &str, output: Option<&str>, theme: Theme) -> any
         for event in rx {
             match event {
                 Ok(_) => {
-                    if let Err(e) = cmd_render(&path, output.as_deref(), theme) {
+                    if let Err(e) = cmd_render(
+                        &path,
+                        output.as_deref(),
+                        output_dir.as_deref(),
+                        index,
+                        theme,
+                    ) {
                         eprintln!("Render error: {e}");
                     } else {
                         eprintln!("Re-rendered {path}");

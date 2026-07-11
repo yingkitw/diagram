@@ -175,6 +175,28 @@ fn test_cli_preview_help() {
 }
 
 #[test]
+fn test_cli_multi_document_render() {
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/multi-document.json");
+    let dir = std::env::temp_dir().join(format!("diagram_multi_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (stdout, _, code) = run(&[
+        "render",
+        src.to_str().unwrap(),
+        "--output-dir",
+        dir.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("Rendered 2 diagram(s)"), "stdout: {stdout}");
+    assert!(dir.join("multi-document-0.svg").exists());
+    assert!(dir.join("multi-document-1.svg").exists());
+    let (stdout, _, code) = run(&["info", src.to_str().unwrap()]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("Diagrams: 2"), "stdout: {stdout}");
+    assert!(stdout.contains("Diagram 0: flowchart"), "stdout: {stdout}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn test_cli_markdown_pipeline() {
     let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/doc-with-diagrams.md");
     let dir = std::env::temp_dir().join(format!("diagram_md_cli_{}", std::process::id()));

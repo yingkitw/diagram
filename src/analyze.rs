@@ -6,12 +6,22 @@ use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Debug, Clone, Serialize)]
+pub struct DiagramMetricsEntry {
+    pub index: usize,
+    pub kind: String,
+    #[serde(flatten)]
+    pub detail: MetricsDetail,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct DocumentMetrics {
     pub ir_version: u32,
     pub diagrams: usize,
     pub kind: String,
     #[serde(flatten)]
     pub detail: MetricsDetail,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entries: Option<Vec<DiagramMetricsEntry>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -76,24 +86,50 @@ pub struct GanttMetrics {
 }
 
 pub fn metrics(doc: &Document) -> DocumentMetrics {
-    let Some(d) = doc.primary() else {
+    if doc.diagrams.is_empty() {
+        return DocumentMetrics {
+            ir_version: doc.version,
+            diagrams: 0,
+            kind: "none".into(),
+            detail: MetricsDetail::Empty {},
+            entries: None,
+        };
+    }
+    if doc.diagrams.len() > 1 {
+        let entries = doc
+            .diagrams
+            .iter()
+            .enumerate()
+            .map(|(i, d)| DiagramMetricsEntry {
+                index: i,
+                kind: d.kind().to_string(),
+                detail: metrics_for_diagram(d),
+            })
+            .collect();
         return DocumentMetrics {
             ir_version: doc.version,
             diagrams: doc.diagrams.len(),
-            kind: "none".into(),
+            kind: "multi".into(),
             detail: MetricsDetail::Empty {},
+            entries: Some(entries),
         };
-    };
+    }
+    let d = &doc.diagrams[0];
     DocumentMetrics {
         ir_version: doc.version,
-        diagrams: doc.diagrams.len(),
+        diagrams: 1,
         kind: d.kind().to_string(),
-        detail: match d {
-            Diagram::Flowchart(fc) => MetricsDetail::Flowchart(flowchart_metrics(fc)),
-            Diagram::Sequence(s) => MetricsDetail::Sequence(sequence_metrics(s)),
-            Diagram::Class(c) => MetricsDetail::Class(class_metrics(c)),
-            Diagram::Gantt(g) => MetricsDetail::Gantt(gantt_metrics(g)),
-        },
+        detail: metrics_for_diagram(d),
+        entries: None,
+    }
+}
+
+fn metrics_for_diagram(d: &Diagram) -> MetricsDetail {
+    match d {
+        Diagram::Flowchart(fc) => MetricsDetail::Flowchart(flowchart_metrics(fc)),
+        Diagram::Sequence(s) => MetricsDetail::Sequence(sequence_metrics(s)),
+        Diagram::Class(c) => MetricsDetail::Class(class_metrics(c)),
+        Diagram::Gantt(g) => MetricsDetail::Gantt(gantt_metrics(g)),
     }
 }
 
@@ -314,5 +350,24 @@ mod tests {
         let json = serde_json::to_string(&metrics(&doc)).unwrap();
         assert!(json.contains("\"kind\":\"flowchart\""));
         assert!(json.contains("\"nodes\":2"));
+    }
+
+    #[test]
+    fn multi_document_metrics_entries() {
+        let doc = ir::from_mermaid("graph TD\n  A-->B\n").unwrap();
+        let doc2 = Document {
+            version: 1,
+            diagrams: vec![
+                doc.primary().unwrap().clone(),
+                ir::from_mermaid("sequenceDiagram\n  A->>B: hi\n")
+                    .unwrap()
+                    .primary()
+                    .unwrap()
+                    .clone(),
+            ],
+        };
+        let m = metrics(&doc2);
+        assert_eq!(m.kind, "multi");
+        assert_eq!(m.entries.as_ref().unwrap().len(), 2);
     }
 }

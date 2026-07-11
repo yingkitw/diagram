@@ -33,7 +33,7 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 - [x] PlantUML adapter MVP (sequence → sequence IR; class/activity later)
 - [x] Graphviz DOT import (digraph subset) → flowchart IR
 - [x] PNG export (resvg; `.png` output via `diagram render`)
-- [ ] Multi-diagram Document (several kinds / figures per file)
+- [x] Multi-diagram Document (several kinds / figures per file)
 - [x] Markdown pipeline: extract fenced blocks → render → rewrite links
 - [ ] Lossiness report on export (what could not be represented)
 
