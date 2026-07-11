@@ -8,4 +8,8 @@ We reposition `diagram` as a **diagram platform** (render, generate, analyze, in
 
 **Why not stay Mermaid-native?** Competing with Mermaid/PlantUML on syntax alone loses; competing on native speed, MCP-native generation/analysis, and multi-format interchange wins. Cloning either ecosystem end-to-end is unbounded; Compatibility with lossy-but-useful roundtrips is the bar.
 
-**Consequences:** Short-term code still has parallel Mermaid modules (`parser`, `sequence`, `class`, `gantt`); the next architectural step is a `Document`/`Diagram` IR enum plus `import`/`export` CLI/MCP commands. PlantUML and other formats land as adapters, not as a second core model.
+**Consequences (as of v0.1.x):**
+
+- **Shipped:** `Document` / `Diagram` / `Kind` JSON IR; `import`/`export` CLI/MCP; lossiness reports; Mermaid behind `formats::mermaid`; DOT and PlantUML adapters (partial); render to SVG/PNG/PDF (raster); multi-diagram documents; markdown pipeline; analysis metrics.
+- **Ongoing:** Expand adapter subsets (PlantUML activity export, DOT features); new kinds (state, ER); semantic diff UX; optional formats (D2) as demand warrants.
+- **Rule:** New features that cross format boundaries go through IR + adapters, not Mermaid-only code paths.

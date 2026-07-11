@@ -30,7 +30,7 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 
 ## Medium-term (interchange + render)
 
-- [x] PlantUML adapter (sequence, class, activity import; class/sequence export)
+- [x] PlantUML adapter (sequence, class, activity import; sequence/class export)
 - [x] Graphviz DOT import + export (digraph subset) ↔ flowchart IR
 - [x] PNG export (resvg; `.png` output via `diagram render`)
 - [x] PDF export (resvg + printpdf; `.pdf` output via `diagram render`)
@@ -41,8 +41,11 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 ## Longer-term
 
 - [ ] D2 / Excalidraw / Kroki-adjacent adapters as demand warrants
+- [ ] PlantUML activity export (flowchart IR → activity syntax)
+- [ ] Vector PDF export (optional; raster PDF shipped)
 - [ ] State + ER kinds (IR + Mermaid Compatibility)
 - [ ] Sequence/class/gantt extras (notes, loops, interfaces, milestones, …)
+- [ ] VS Code extension (thin client over MCP + preview)
 - [ ] Plugin API for custom shapes / render backends
 - [ ] Wasm embed for browser preview without local server
 - [ ] Semantic diff UX (structural, not only text)
@@ -57,4 +60,4 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 | Structural analysis API | Limited | Limited |
 | Docs CI without heavy runtimes | mmdc heavy | Docker/Java common |
 
-Prioritize: IR spine → PlantUML or DOT adapter → PNG → markdown pipeline → editor UX.
+Prioritize next: D2 or editor UX (VS Code) → semantic diff → new kinds (state/ER) → adapter depth (DOT/PlantUML subsets).

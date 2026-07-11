@@ -4,24 +4,25 @@ A native Rust platform for **diagram rendering, generation, analysis, and interc
 
 | Pillar | What it means |
 |--------|----------------|
-| **Render** | Fast, Chromium-free layout → SVG and PNG (PDF planned) |
+| **Render** | Fast, Chromium-free layout → SVG, PNG, and PDF (raster) |
 | **Generate** | Structured create/edit via CLI + MCP (agents and scripts) |
 | **Analyze** | Validate, diff, merge, and structural metrics on the IR |
 | **Interchange** | Import/export across formats via a canonical IR |
 
 **Why this vs Mermaid.js / PlantUML?** Single native binary, MCP-first agent workflows, analysis without a browser or JVM, and a format-agnostic core so you can keep existing Mermaid/PlantUML sources while moving toward a richer IR.
 
-Today’s parsers speak Mermaid (flowchart, sequence, class, gantt). The roadmap centers a canonical IR with adapters for PlantUML, Graphviz DOT, D2, and more.
+**Formats today:** Mermaid (flowchart, sequence, class, gantt); native JSON IR; Graphviz DOT and PlantUML (sequence, class, activity) via adapters; SVG/PNG/PDF render output.
 
 ## Quick start
 
 ```bash
 cargo install --path .
 
-# Render (auto-detects kind)
+# Render (auto-detects kind; extension picks output format)
 diagram render examples/multi-document.json --output all.svg
-diagram render examples/multi-document.json --output-dir figures/
-diagram render examples/multi-document.json --index 1 --output seq.svg
+diagram render examples/simple-flowchart.mmd --output out.png
+diagram render examples/simple-flowchart.mmd --output out.pdf
+diagram render examples/multi-document.json --output-dir figures/ --output fig.png
 diagram preview sample.mmd
 
 # Parse canonical JSON IR
@@ -30,6 +31,8 @@ diagram ir sample.mmd
 
 # Import / export interchange
 diagram import examples/sequence.puml --output sample.ir.json
+diagram import examples/activity.puml --output activity.ir.json
+diagram import examples/simple-flowchart.dot --output flow.ir.json
 diagram export sample.ir.json --output out.mmd --to mermaid
 diagram export sample.ir.json --output out.dot --to dot
 diagram export sample.ir.json --output out.puml --to plantuml
@@ -55,40 +58,47 @@ diagram mcp   # agent tools over stdio
 
 | Format | Role today | Direction |
 |--------|------------|-----------|
-| Mermaid (`.mmd`) | Primary import + roundtrip for flowchart/sequence/class/gantt | Keep high Compatibility |
+| Mermaid (`.mmd`) | Primary import + export for flowchart/sequence/class/gantt | Keep high Compatibility |
 | Native JSON IR | Canonical interchange (`diagram ir`, `import`/`export`) | Stable |
 | SVG | Render export | Stable |
-| PlantUML (`.puml`) | Sequence + class import/export; activity → flowchart IR | Activity export |
-| Graphviz DOT (`.dot`) | Import + export flowchart IR (digraph subset) | Expand subset |
 | PNG | Render export (`.png` via `diagram render`) | Stable |
 | PDF | Render export (`.pdf` via `diagram render`; raster embed) | Stable |
-| PDF | — | Render export (planned) |
+| PlantUML (`.puml`) | Sequence + class import/export; activity → flowchart IR | Activity export; expand syntax |
+| Graphviz DOT (`.dot`) | Flowchart import + export (digraph subset) | Expand subset |
+| Lossiness report | `diagram lossiness` / `export --report` / MCP | Expand per-format warnings |
 
 ## CLI (current)
 
 ```bash
-diagram parse sample.mmd
-diagram info sample.mmd
-diagram render sample.mmd [--output out.svg] [--watch] [--theme dark|light]
-diagram render sample.mmd --output out.pdf
-diagram preview sample.mmd [--port 3030] [--theme dark|light]
-diagram validate sample.mmd
-diagram metrics sample.mmd
-diagram diff left.mmd right.mmd
-diagram merge left.mmd right.mmd --output merged.mmd
-diagram create --kind flowchart --output new.mmd
+diagram parse | ir | import | export | lossiness
+diagram info | render | preview | validate | metrics | diff | merge
+diagram create --kind flowchart|sequence|class|gantt
+diagram markdown
 diagram add-node | remove-node | update-node | add-edge | remove-edge | update-edge ...
 diagram get-node | get-edge | list-nodes | list-edges | get-mermaid | set-mermaid ...
 diagram mcp
 ```
 
-Examples under `examples/` cover flowchart, sequence, class, and gantt Mermaid sources.
+`diagram render` picks output format from `--output` extension: `.svg`, `.png`, or `.pdf`.
+
+## Examples
+
+Under `examples/`:
+
+| File | Kind / format |
+|------|----------------|
+| `simple-flowchart.mmd`, `shapes.mmd`, `subgraphs.mmd`, … | Mermaid flowchart |
+| `sequence.mmd`, `class.mmd`, `gantt.mmd` | Mermaid sequence / class / gantt |
+| `sequence.puml`, `class.puml`, `activity.puml` | PlantUML |
+| `simple-flowchart.dot` | Graphviz DOT |
+| `multi-document.json` | Multi-diagram JSON IR |
+| `doc-with-diagrams.md` | Markdown pipeline demo |
 
 ## MCP
 
-`diagram mcp` exposes parse, render, validate, diff/merge, and graph edit tools over stdio — designed for AI assistants that generate and analyze diagrams without shelling out to Chromium or Java.
+`diagram mcp` exposes parse, import/export, lossiness, render (SVG/PNG/PDF), validate, diff/merge, metrics, markdown processing, and graph edit tools over stdio — designed for AI assistants without Chromium or Java.
 
-See tool table in earlier releases / `SPEC.md`.
+See the full tool table in `SPEC.md`.
 
 ### Claude Desktop
 
@@ -111,7 +121,7 @@ Formats (Mermaid, PlantUML, DOT, …)  ──import──►  Canonical IR  ─�
                                           ┌───────────┼───────────┐
                                           ▼           ▼           ▼
                                        Render      Analyze     Generate
-                                      (SVG/…)    (validate,   (CLI/MCP
+                                    (SVG/PNG/PDF) (validate,   (CLI/MCP
                                                   diff, …)     tools)
 ```
 
@@ -128,7 +138,8 @@ cargo test
 ```
 src/
 ├── main.rs / cli.rs / mcp.rs / preview.rs
-├── diagram.rs / parser.rs / layout.rs / renderer.rs   # flowchart IR + Mermaid
-├── sequence.rs / class.rs / gantt.rs                  # kind modules (Mermaid in → IR → SVG)
-├── ir.rs / formats/ / analyze.rs / generate.rs        # canonical IR, adapters, analysis, scaffolds
+├── ir.rs / formats/ / lossiness.rs / analyze.rs / generate.rs / markdown.rs / composite.rs
+├── diagram.rs / parser.rs / layout.rs / renderer.rs   # flowchart
+├── sequence.rs / class.rs / gantt.rs                  # other kinds
+├── png.rs / pdf.rs                                    # raster render backends
 ```

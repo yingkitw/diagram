@@ -1,6 +1,6 @@
 # Diagram guide
 
-This page embeds diagrams rendered by `diagram markdown`.
+This page embeds diagrams rendered by `diagram markdown` (supports fenced `mermaid`, `plantuml`, and `dot` blocks).
 
 ## Flowchart
 

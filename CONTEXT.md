@@ -29,7 +29,7 @@ A bidirectional (or unidirectional) bridge between a Format and the IR.
 _Avoid_: Plugin (reserved for renderer/shape extensions), converter (too vague)
 
 **Render**:
-Produce a visual artifact (SVG today; PNG/PDF later) from the IR.
+Produce a visual artifact (SVG, PNG, or raster PDF) from the IR.
 _Avoid_: Draw, compile (unless talking about layout)
 
 **Generate**:
@@ -47,3 +47,7 @@ _Avoid_: Convert-only (implies lossy one-shot), sync
 **Compatibility**:
 Best-effort roundtrip with Mermaid/PlantUML (and peers) so existing docs and tools keep working.
 _Avoid_: Parity (implies 100% feature match — we aim for useful Compatibility, not clone parity)
+
+**Lossiness**:
+Explicit report of IR fields or semantics that a target Format cannot represent on export.
+_Avoid_: Silent data loss, “full fidelity” claims without tests
