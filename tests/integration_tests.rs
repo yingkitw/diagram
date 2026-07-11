@@ -85,6 +85,32 @@ fn test_all_examples_roundtrip() {
                     "message count mismatch for {:?}",
                     path
                 );
+            } else if diagram::class::is_class(&source) {
+                let diagram = diagram::class::parse(&source).unwrap();
+                let output = diagram.to_mermaid();
+                let reparsed = diagram::class::parse(&output).unwrap();
+                assert_eq!(
+                    diagram.classes.len(),
+                    reparsed.classes.len(),
+                    "class count mismatch for {:?}",
+                    path
+                );
+                assert_eq!(
+                    diagram.relations.len(),
+                    reparsed.relations.len(),
+                    "relation count mismatch for {:?}",
+                    path
+                );
+            } else if diagram::gantt::is_gantt(&source) {
+                let diagram = diagram::gantt::parse(&source).unwrap();
+                let output = diagram.to_mermaid();
+                let reparsed = diagram::gantt::parse(&output).unwrap();
+                assert_eq!(
+                    diagram.tasks.len(),
+                    reparsed.tasks.len(),
+                    "task count mismatch for {:?}",
+                    path
+                );
             } else {
                 let diagram = diagram::parser::parse(&source).unwrap();
                 let output = diagram.to_mermaid();
@@ -352,4 +378,57 @@ fn test_preview_renders_sequence() {
     .unwrap();
     assert!(svg.contains("<svg"));
     assert!(svg.contains("Alice"));
+}
+
+#[test]
+fn test_class_example_parse_and_render() {
+    let path = examples_dir().join("class.mmd");
+    let source = fs::read_to_string(&path).unwrap();
+    assert!(diagram::class::is_class(&source));
+    let diagram = diagram::class::parse(&source).unwrap();
+    assert!(diagram.classes.len() >= 3);
+    assert!(diagram.relations.len() >= 2);
+    let svg = diagram::class::render_svg(&diagram, diagram::renderer::Theme::Dark);
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("Animal"));
+    assert!(svg.contains("+String name"));
+    let roundtrip = diagram::class::parse(&diagram.to_mermaid()).unwrap();
+    assert_eq!(roundtrip.classes.len(), diagram.classes.len());
+}
+
+#[test]
+fn test_preview_renders_class() {
+    let path = examples_dir().join("class.mmd");
+    let svg = diagram::preview::render_file(
+        path.to_str().unwrap(),
+        diagram::renderer::Theme::Light,
+    )
+    .unwrap();
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("Dog"));
+}
+
+#[test]
+fn test_gantt_example_parse_and_render() {
+    let path = examples_dir().join("gantt.mmd");
+    let source = fs::read_to_string(&path).unwrap();
+    assert!(diagram::gantt::is_gantt(&source));
+    let diagram = diagram::gantt::parse(&source).unwrap();
+    assert!(diagram.tasks.len() >= 3);
+    let svg = diagram::gantt::render_svg(&diagram, diagram::renderer::Theme::Dark);
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("Research"));
+    assert!(svg.contains("Project Plan"));
+}
+
+#[test]
+fn test_preview_renders_gantt() {
+    let path = examples_dir().join("gantt.mmd");
+    let svg = diagram::preview::render_file(
+        path.to_str().unwrap(),
+        diagram::renderer::Theme::Dark,
+    )
+    .unwrap();
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("Implement"));
 }

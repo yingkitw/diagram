@@ -190,7 +190,7 @@ pub struct DiagramServer;
 
 #[tool_router]
 impl DiagramServer {
-    #[tool(description = "Parse a mermaid diagram file and return its JSON representation")]
+    #[tool(description = "Parse a diagram file (Mermaid today) and return its IR as JSON")]
     async fn parse_diagram(&self, Parameters(params): Parameters<FilePath>) -> CallToolResult {
         let content = match std::fs::read_to_string(&params.path) {
             Ok(c) => c,
@@ -203,6 +203,22 @@ impl DiagramServer {
         };
         if crate::sequence::is_sequence(&content) {
             match crate::sequence::parse(&content) {
+                Ok(diagram) => {
+                    let json = serde_json::to_string_pretty(&diagram).unwrap_or_default();
+                    CallToolResult::success(vec![ContentBlock::text(json)])
+                }
+                Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
+            }
+        } else if crate::class::is_class(&content) {
+            match crate::class::parse(&content) {
+                Ok(diagram) => {
+                    let json = serde_json::to_string_pretty(&diagram).unwrap_or_default();
+                    CallToolResult::success(vec![ContentBlock::text(json)])
+                }
+                Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
+            }
+        } else if crate::gantt::is_gantt(&content) {
+            match crate::gantt::parse(&content) {
                 Ok(diagram) => {
                     let json = serde_json::to_string_pretty(&diagram).unwrap_or_default();
                     CallToolResult::success(vec![ContentBlock::text(json)])
@@ -245,6 +261,34 @@ impl DiagramServer {
                 Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
             };
         }
+        if crate::class::is_class(&content) {
+            return match crate::class::parse(&content) {
+                Ok(diagram) => {
+                    let summary = serde_json::json!({
+                        "path": params.path,
+                        "type": "class",
+                        "classes": diagram.classes.len(),
+                        "relations": diagram.relations.len(),
+                    });
+                    CallToolResult::success(vec![ContentBlock::text(summary.to_string())])
+                }
+                Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
+            };
+        }
+        if crate::gantt::is_gantt(&content) {
+            return match crate::gantt::parse(&content) {
+                Ok(diagram) => {
+                    let summary = serde_json::json!({
+                        "path": params.path,
+                        "type": "gantt",
+                        "title": diagram.title,
+                        "tasks": diagram.tasks.len(),
+                    });
+                    CallToolResult::success(vec![ContentBlock::text(summary.to_string())])
+                }
+                Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
+            };
+        }
         let diagram = match read_file(&params.path) {
             Ok(d) => d,
             Err(e) => return e,
@@ -278,7 +322,7 @@ impl DiagramServer {
         CallToolResult::success(vec![ContentBlock::text(summary.to_string())])
     }
 
-    #[tool(description = "Render diagram as SVG (flowchart or sequence)")]
+    #[tool(description = "Render diagram as SVG (flowchart, sequence, class, or gantt)")]
     async fn render_svg(&self, Parameters(params): Parameters<RenderParams>) -> CallToolResult {
         let theme = match params.theme.as_deref() {
             Some("light") => renderer::Theme::Light,
@@ -726,7 +770,7 @@ impl ServerHandler for DiagramServer {
                 .build(),
         )
         .with_instructions(
-            "Diagram manipulation MCP server. Read, parse, modify, and render mermaid diagrams.",
+            "Diagram platform MCP server: render, generate, analyze, and interchange diagrams. Mermaid-compatible today; IR-centric tools. Parse, validate, diff/merge, mutate flowcharts, and render SVG.",
         )
     }
 
@@ -745,8 +789,8 @@ impl ServerHandler for DiagramServer {
     ) -> impl std::future::Future<Output = Result<ListResourceTemplatesResult, ErrorData>> + MaybeSendFuture + '_ {
         std::future::ready(Ok(ListResourceTemplatesResult::with_all_items(vec![
             ResourceTemplate::new("file://{path}", "mermaid-diagram")
-                .with_title("Mermaid diagram file")
-                .with_description("Read any .mmd file as a text resource")
+                .with_title("Diagram source file")
+                .with_description("Read a diagram source file (Mermaid .mmd today) as text")
                 .with_mime_type("text/plain"),
         ])))
     }

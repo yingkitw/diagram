@@ -187,3 +187,31 @@ fn test_cli_sequence_info_and_render() {
     assert!(stdout.contains("<svg"), "stdout should be SVG");
     assert!(stdout.contains("Alice"));
 }
+
+#[test]
+fn test_cli_class_info_and_render() {
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/class.mmd");
+    let path = path.to_str().unwrap();
+    let (stdout, _, code) = run(&["info", path]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("Type: class"), "stdout: {stdout}");
+    assert!(stdout.contains("Classes:"), "stdout: {stdout}");
+    let (stdout, _, code) = run(&["render", path]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("<svg"));
+    assert!(stdout.contains("Animal"));
+}
+
+#[test]
+fn test_cli_gantt_info_and_render() {
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/gantt.mmd");
+    let path = path.to_str().unwrap();
+    let (stdout, _, code) = run(&["info", path]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("Type: gantt"), "stdout: {stdout}");
+    assert!(stdout.contains("Tasks:"), "stdout: {stdout}");
+    let (stdout, _, code) = run(&["render", path]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("<svg"));
+    assert!(stdout.contains("Research"));
+}

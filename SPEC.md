@@ -2,9 +2,25 @@
 
 ## Overview
 
-`diagram` is a CLI tool and MCP server for manipulating Mermaid diagrams. It parses `.mmd` files into an in-memory graph model, allows inspection and modification, and can render to SVG. Flowcharts and sequence diagrams (MVP) are supported.
+`diagram` is a Rust CLI and MCP **diagram platform**: render, generate, analyze, and interchange diagrams via a canonical **IR**, with **Compatibility** adapters for Mermaid (today) and PlantUML/DOT/D2 (planned). See `CONTEXT.md` and `docs/adr/0001-canonical-ir-and-format-adapters.md`.
 
-## Supported Mermaid Syntax
+**Current shipping surface:** Mermaid sources for flowchart, sequence, class, and gantt → parse/info/render/preview; flowchart generate/edit; validate/diff/merge; SVG export.
+
+## Platform contracts (target)
+
+| Capability | Contract |
+|------------|----------|
+| Import | `Format` bytes → `Document` IR |
+| Export | `Document` IR → `Format` bytes (+ optional lossiness report) |
+| Render | `Document` / `Diagram` → SVG (PNG/PDF later) |
+| Analyze | `Document` → validation issues, diff, metrics JSON |
+| Generate | MCP/CLI mutations and scaffolds against IR |
+
+Native JSON IR will be a first-class Format once the `Document` type lands.
+
+## Supported Mermaid Syntax (Compatibility)
+
+Mermaid remains the primary authored Format in this version. Syntax below is Compatibility coverage, not the long-term identity of the product.
 
 ### Flowcharts
 
@@ -32,6 +48,26 @@
 - Implicit participants created from message endpoints
 - Rendered with lifelines, header/footer boxes, and labeled arrows
 - Not yet: notes, loops, alt/opt, activations, self-messages
+
+### Class diagrams (MVP)
+
+- **Header**: `classDiagram`
+- **Classes**: `class Name`, `class Name { members }`, `Name : +member`
+- **Relations**: `<|--` inheritance, `*--` composition, `o--` aggregation, `-->` association, `--` link, `..>` dependency, `..|>` realization
+- Optional relation labels after `:`
+- Layered SVG layout (parents above children)
+- Not yet: interfaces, generics, cardinality, notes
+
+### Gantt charts (MVP)
+
+- **Header**: `gantt`
+- **Meta**: `title ...`, `dateFormat YYYY-MM-DD` (only this format)
+- **Sections**: `section Name`
+- **Tasks**: `Name : [tags,] [id,] start|after id, duration|end`
+- Tags: `crit`, `active`, `done`
+- Durations: `Nd` / `Nh`; `after <id>` scheduling
+- SVG timeline with section labels and colored bars
+- Not yet: milestones, excludes, today marker, other dateFormats
 
 ## Error Handling
 
@@ -149,8 +185,10 @@ struct ClassApply {
 
 The crate exposes a public library API via `src/lib.rs`:
 ```rust
+pub mod class;
 pub mod cli;
 pub mod diagram;
+pub mod gantt;
 pub mod layout;
 pub mod mcp;
 pub mod parser;

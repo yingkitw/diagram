@@ -1,104 +1,97 @@
 # diagram
 
-A Rust CLI and MCP (Model Context Protocol) server for manipulating Mermaid diagrams. Parse, inspect, modify, and render `.mmd` files from the command line or through any MCP-compatible AI assistant. Supports flowcharts and sequence diagrams.
+A native Rust platform for **diagram rendering, generation, analysis, and interchange** — with Mermaid/PlantUML compatibility, not Mermaid lock-in.
 
-## Usage
+| Pillar | What it means |
+|--------|----------------|
+| **Render** | Fast, Chromium-free layout → SVG (PNG/PDF planned) |
+| **Generate** | Structured create/edit via CLI + MCP (agents and scripts) |
+| **Analyze** | Validate, diff, merge, and structural metrics on the IR |
+| **Interchange** | Import/export across formats via a canonical IR |
 
-### CLI
+**Why this vs Mermaid.js / PlantUML?** Single native binary, MCP-first agent workflows, analysis without a browser or JVM, and a format-agnostic core so you can keep existing Mermaid/PlantUML sources while moving toward a richer IR.
+
+Today’s parsers speak Mermaid (flowchart, sequence, class, gantt). The roadmap centers a canonical IR with adapters for PlantUML, Graphviz DOT, D2, and more.
+
+## Quick start
 
 ```bash
-# Parse a diagram and print as JSON
-diagram parse sample.mmd
+cargo install --path .
 
-# Show diagram summary
-diagram info sample.mmd
-
-# Render diagram as SVG (stdout or --output)
-diagram render sample.mmd
+# Render (auto-detects kind)
 diagram render sample.mmd --output out.svg
-
-# Watch mode: auto-re-render when file changes
-diagram render sample.mmd --output out.svg --watch
-
-# Light theme
-diagram render sample.mmd --output out.svg --theme light
-
-# Live browser preview (auto-refreshes SVG)
 diagram preview sample.mmd
-diagram preview sample.mmd --port 8080 --theme light
 
-# Sequence diagrams
-diagram info examples/sequence.mmd
-diagram render examples/sequence.mmd --output seq.svg
-diagram preview examples/sequence.mmd
-
-# Manipulate nodes and edges
-diagram add-node sample.mmd X "New Node"
-diagram add-node sample.mmd X "New Node" --shape stadium
-diagram update-node sample.mmd X --text "Updated"
-diagram remove-node sample.mmd X
-diagram add-edge sample.mmd A X --label "connects to"
-diagram add-edge sample.mmd A X --style dashed
-diagram remove-edge sample.mmd A X
-diagram update-edge sample.mmd A X --style thick
-diagram get-node sample.mmd A
-diagram get-edge sample.mmd A X
+# Analyze
 diagram validate sample.mmd
-
-# Diff and merge diagrams
+diagram info sample.mmd
 diagram diff base.mmd modified.mmd
-diagram merge base.mmd modified.mmd --output merged.mmd
 
-# Add nodes with interactive links and tooltips
-diagram add-node sample.mmd A "Homepage" --href "https://example.com" --tooltip "Visit our site"
-diagram update-node sample.mmd A --href "https://example.com" --tooltip "Visit our site"
+# Generate / edit (flowchart IR ops; more kinds over time)
+diagram add-node sample.mmd X "New Node" --shape stadium
+diagram mcp   # agent tools over stdio
+```
 
-# Start MCP server
+## Compatibility
+
+| Format | Role today | Direction |
+|--------|------------|-----------|
+| Mermaid (`.mmd`) | Primary import + roundtrip for flowchart/sequence/class/gantt | Keep high Compatibility |
+| Native JSON IR | Partial (parse/info JSON) | Become the canonical interchange |
+| SVG | Render export | Stable |
+| PlantUML | — | Import/export adapter (planned) |
+| Graphviz DOT / D2 | — | Adapters (planned) |
+| PNG / PDF | — | Render export (planned) |
+
+## CLI (current)
+
+```bash
+diagram parse sample.mmd
+diagram info sample.mmd
+diagram render sample.mmd [--output out.svg] [--watch] [--theme dark|light]
+diagram preview sample.mmd [--port 3030] [--theme dark|light]
+diagram validate sample.mmd
+diagram diff left.mmd right.mmd
+diagram merge left.mmd right.mmd --output merged.mmd
+diagram add-node | remove-node | update-node | add-edge | remove-edge | update-edge ...
+diagram get-node | get-edge | list-nodes | list-edges | get-mermaid | set-mermaid ...
 diagram mcp
 ```
 
-### MCP (AI Assistant Integration)
+Examples under `examples/` cover flowchart, sequence, class, and gantt Mermaid sources.
 
-Start the MCP server with `diagram mcp`. It communicates over stdio using the Model Context Protocol.
+## MCP
 
-**Available tools:**
+`diagram mcp` exposes parse, render, validate, diff/merge, and graph edit tools over stdio — designed for AI assistants that generate and analyze diagrams without shelling out to Chromium or Java.
 
-| Tool | Description |
-|------|-------------|
-| `parse_diagram` | Parse a .mmd file and return JSON |
-| `get_info` | Diagram summary (node/edge count, shapes) |
-| `render_svg` | Render diagram as SVG (optional theme) |
-| `diff_diagram` | Compare two diagrams |
-| `merge_diagram` | Merge two diagrams into one |
-| `add_node` | Add a node (id, text, optional shape, href, tooltip) |
-| `remove_node` | Remove a node and its edges |
-| `update_node` | Update node text/shape/href/tooltip |
-| `add_edge` | Add an edge (from, to, optional label) |
-| `remove_edge` | Remove an edge |
-| `get_mermaid` | Get the mermaid source code |
-| `set_mermaid` | Write raw mermaid source to file |
-| `list_nodes` | List all nodes |
-| `list_edges` | List all edges |
-| `update_edge` | Update edge label/style |
-| `get_node` | Get a single node by ID |
-| `get_edge` | Get a single edge by from/to |
-| `validate_diagram` | Validate for orphans/dangling edges/cycles |
-| `add_nodes` | Add multiple nodes at once |
-| `add_edges` | Add multiple edges at once |
+See tool table in earlier releases / `SPEC.md`.
 
-### MCP Client Configuration
+### Claude Desktop
 
-**Claude Desktop:**
 ```json
 {
   "mcpServers": {
     "diagram": {
       "command": "cargo",
-      "args": ["run", "--manifest-path", "/path/to/diagram-rs/Cargo.toml", "--", "mcp"]
+      "args": ["run", "--manifest-path", "/path/to/diagram/Cargo.toml", "--", "mcp"]
     }
   }
 }
 ```
+
+## Architecture (target)
+
+```
+Formats (Mermaid, PlantUML, DOT, …)  ──import──►  Canonical IR  ──export──►  Formats
+                                                      │
+                                          ┌───────────┼───────────┐
+                                          ▼           ▼           ▼
+                                       Render      Analyze     Generate
+                                      (SVG/…)    (validate,   (CLI/MCP
+                                                  diff, …)     tools)
+```
+
+See `ARCHITECTURE.md`, `CONTEXT.md`, and `docs/adr/0001-canonical-ir-and-format-adapters.md`.
 
 ## Testing
 
@@ -106,33 +99,12 @@ Start the MCP server with `diagram mcp`. It communicates over stdio using the Mo
 cargo test
 ```
 
-Includes parser unit tests, integration tests for all `examples/` files, CLI subprocess tests, and roundtrip fidelity checks.
-
-## Installation
-
-```bash
-cargo install --path .
-```
-
-## Dependencies
-
-- [rmcp](https://crates.io/crates/rmcp) — Rust MCP SDK (server + macros)
-- [clap](https://crates.io/crates/clap) — CLI argument parsing
-- [serde](https://crates.io/crates/serde) / serde_json — serialization
-- [tokio](https://crates.io/crates/tokio) — async runtime
-- [schemars](https://crates.io/crates/schemars) — JSON schema generation for MCP tools
-
-## Project Structure
+## Project layout
 
 ```
 src/
-├── main.rs      # Entry point
-├── cli.rs       # CLI subcommands
-├── mcp.rs       # MCP server & tools
-├── preview.rs   # Live browser preview server
-├── sequence.rs  # Sequence diagram parse/layout/render
-├── diagram.rs   # Core data model
-├── parser.rs    # Mermaid flowchart parser
-├── layout.rs    # Graph layout algorithm
-└── renderer.rs  # SVG generation
+├── main.rs / cli.rs / mcp.rs / preview.rs
+├── diagram.rs / parser.rs / layout.rs / renderer.rs   # flowchart IR + Mermaid
+├── sequence.rs / class.rs / gantt.rs                  # kind modules (Mermaid in → IR → SVG)
+└── …                                                  # future: ir/, formats/
 ```

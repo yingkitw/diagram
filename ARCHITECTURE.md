@@ -1,61 +1,89 @@
 # Architecture
 
-## Module Dependencies
+## Product position
+
+`diagram` is a **diagram platform**: render, generate, analyze, interchange. Mermaid is a compatibility **Format**, not the core identity. See `CONTEXT.md` and `docs/adr/0001-canonical-ir-and-format-adapters.md`.
+
+## Target shape
+
+```
+┌─────────────┐   import    ┌──────────────────┐   export   ┌─────────────┐
+│  Formats    │ ──────────► │  Canonical IR    │ ─────────► │  Formats    │
+│  Mermaid    │             │  Document        │            │  Mermaid    │
+│  PlantUML   │             │   └─ Diagram[]   │            │  PlantUML   │
+│  DOT / D2   │             │       by Kind    │            │  DOT / D2   │
+│  JSON IR    │             └────────┬─────────┘            │  JSON IR    │
+└─────────────┘                      │                      └─────────────┘
+                         ┌───────────┼───────────┐
+                         ▼           ▼           ▼
+                      Render      Analyze     Generate
+                     layout+SVG   validate    CLI / MCP
+                     PNG/PDF…     diff/merge  structured edits
+                                  metrics
+```
+
+## Current modules (as implemented)
 
 ```
 main.rs
-  ├── cli.rs      — clap CLI dispatch → diagram ops, preview server, or MCP server
-  ├── mcp.rs      — rmcp ServerHandler → tools/resources/prompts via modify_file()
-  ├── preview.rs  — Lightweight HTTP preview (HTML shell + /svg live reload)
-  ├── diagram.rs  — Core data model (Diagram, Node, Edge, Subgraph, styles, classDefs)
-  ├── parser.rs   — Mermaid flowchart text → Diagram
-  ├── sequence.rs — Mermaid sequence text → SequenceDiagram → SVG
-  ├── layout.rs   — Diagram → Layout (positioned nodes + routed edges)
-  └── renderer.rs — Layout → SVG string (themes, shapes, styles, interactivity)
+  ├── cli.rs      — clap CLI dispatch
+  ├── mcp.rs      — MCP tools (stdio)
+  ├── preview.rs  — localhost live SVG preview
+  ├── diagram.rs  — flowchart IR (Node, Edge, Subgraph, styles)
+  ├── parser.rs   — Mermaid flowchart → flowchart IR
+  ├── sequence.rs — Mermaid sequence → sequence IR → SVG
+  ├── class.rs    — Mermaid class → class IR → SVG
+  ├── gantt.rs    — Mermaid gantt → gantt IR → SVG
+  ├── layout.rs   — flowchart layered layout
+  └── renderer.rs — flowchart Layout → SVG
 ```
 
-## Data Flow
+Detection today is Mermaid-header based (`graph` / `sequenceDiagram` / `classDiagram` / `gantt`). Kind-specific modules each own parse + (for non-flowchart) layout/render. Flowchart mutating CLI/MCP ops write Mermaid back via `to_mermaid()`.
+
+## Planned module boundaries
+
+| Area | Responsibility |
+|------|----------------|
+| `ir` | Canonical `Document` / `Diagram` / `Kind`; JSON schema |
+| `formats::*` | Adapters: Mermaid, PlantUML, DOT, D2, … |
+| `render` | Kind-aware layout + SVG/PNG/PDF backends |
+| `analyze` | Validate, diff, merge, metrics (IR in → report out) |
+| `generate` | CLI/MCP mutations and templates against IR |
+
+Migrate existing `parser` / `sequence` / `class` / `gantt` into `formats::mermaid` + kind IR types without breaking CLI behavior.
+
+## Data flow (today)
 
 ```
-.mmd file → detect type
-              ├── flowchart → parser::parse() → layout → SVG
-              └── sequence  → sequence::parse() → sequence::render_svg()
-
-Diagram ↔ CLI commands (read → mutate → write; flowchart mutating ops)
-Diagram ↔ MCP tools (read → mutate → write via modify_file)
-.mmd file → preview server → browser (HTML + polled SVG)
+.mmd → detect Mermaid kind → kind IR → SVG
+flowchart IR ↔ CLI/MCP mutate ↔ Mermaid text
 ```
 
-## Key Design Decisions
+## Data flow (target)
 
-### File-based state
+```
+any supported Format → Adapter::import → Document IR
+Document IR → Render | Analyze | Generate
+Document IR → Adapter::export → Format
+```
 
-All MCP tools and mutating CLI commands read the `.mmd` file, perform the operation, and write it back. This keeps the server stateless and ensures changes persist between sessions. Each tool call is self-contained.
+## Design constraints
 
-### Sequence diagrams
+- **Native + lean**: prefer std and small crates; no Chromium/JVM for the default path
+- **Compatibility over clone parity**: lossy export is OK if documented; roundtrip tests per adapter
+- **IR-first APIs**: new MCP/CLI features operate on IR (or files via import), not Mermaid strings alone
+- **MCP-native generation/analysis**: agent workflows are a primary interface, not an afterthought
 
-Sequence support lives in `sequence.rs` as a parallel pipeline (not forced into the flowchart `Diagram` model). Auto-detection routes `parse` / `info` / `render` / `preview` / MCP equivalents. Mutating tools remain flowchart-only for now.
+## Existing technical notes
 
-### Minimal rmcp pattern
+### File-based MCP state
 
-The MCP server uses the minimal struct pattern (no `ToolRouter` field needed) with `#[tool_router]` generating routes automatically. `#[tool_handler]` with a custom `get_info()` provides server metadata and capabilities.
+Mutating tools read a path, modify, write back — stateless server, durable files.
 
-### `modify_file` helper
+### Layered flowchart layout
 
-`mcp.rs` centralizes read-modify-write in a `modify_file(path, f)` helper. This guarantees every mutating tool follows the same pattern: parse → apply → serialize → write. Error handling uses `CallToolResult::error` for consistent MCP responses.
-
-### Layered layout
-
-The layout algorithm assigns layers using BFS from source nodes, then positions nodes within each layer. It supports all four directions (`TB`, `LR`, `RL`, `BT`) by swapping x/y axes and reversing layer order. This avoids the dependency on dagre.js while producing reasonable diagrams for common cases.
-
-### Parsing approach
-
-The parser processes lines by splitting on arrow delimiters (`-->`, `->`, `-.->`, `==>`), then extracts node definitions and labels. Shape detection uses bracket matching (`[]`, `{}`, `()`, `{{}}`, `(())`, `[()]`). Quoted IDs (`"my node"`) are handled via quote-aware tokenization.
+BFS layers from sources; four directions via axis swap. No dagre.js dependency.
 
 ### Preview server
 
-`diagram preview` binds a tiny HTTP server on localhost (no extra HTTP crates). `GET /` serves an HTML shell that polls `GET /svg` every second so edits to the `.mmd` file appear live. Theme is fixed at server start via `--theme`.
-
-### Rendered features
-
-Subgraphs, `style` / `classDef` / `class`, and `linkStyle` are parsed, stored, roundtripped, and applied in SVG. Nodes may include `href` links and tooltips. Light and dark themes are supported.
+Minimal `tokio` HTTP on localhost; HTML polls `/svg`.

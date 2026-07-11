@@ -217,6 +217,12 @@ fn cmd_parse(path: &str) -> anyhow::Result<()> {
     if crate::sequence::is_sequence(&content) {
         let diagram = crate::sequence::parse(&content).map_err(|e| anyhow::anyhow!("{e}"))?;
         println!("{}", serde_json::to_string_pretty(&diagram)?);
+    } else if crate::class::is_class(&content) {
+        let diagram = crate::class::parse(&content).map_err(|e| anyhow::anyhow!("{e}"))?;
+        println!("{}", serde_json::to_string_pretty(&diagram)?);
+    } else if crate::gantt::is_gantt(&content) {
+        let diagram = crate::gantt::parse(&content).map_err(|e| anyhow::anyhow!("{e}"))?;
+        println!("{}", serde_json::to_string_pretty(&diagram)?);
     } else {
         let diagram = parser::parse(&content).map_err(|e| anyhow::anyhow!("{e}"))?;
         println!("{}", serde_json::to_string_pretty(&diagram)?);
@@ -233,6 +239,22 @@ fn cmd_info(path: &str) -> anyhow::Result<()> {
         println!("Type: sequence");
         println!("Participants: {}", diagram.participants.len());
         println!("Messages: {}", diagram.messages.len());
+        return Ok(());
+    }
+    if crate::class::is_class(&content) {
+        let diagram = crate::class::parse(&content).map_err(|e| anyhow::anyhow!("{e}"))?;
+        println!("File: {path}");
+        println!("Type: class");
+        println!("Classes: {}", diagram.classes.len());
+        println!("Relations: {}", diagram.relations.len());
+        return Ok(());
+    }
+    if crate::gantt::is_gantt(&content) {
+        let diagram = crate::gantt::parse(&content).map_err(|e| anyhow::anyhow!("{e}"))?;
+        println!("File: {path}");
+        println!("Type: gantt");
+        println!("Title: {}", diagram.title);
+        println!("Tasks: {}", diagram.tasks.len());
         return Ok(());
     }
     let diagram = parser::parse(&content).map_err(|e| anyhow::anyhow!("{e}"))?;

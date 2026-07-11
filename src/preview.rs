@@ -6,13 +6,19 @@ use crate::renderer::{self, Theme};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
-/// Render a `.mmd` file to SVG (flowchart or sequence).
+/// Render a `.mmd` file to SVG (flowchart, sequence, class, or gantt).
 pub fn render_file(path: &str, theme: Theme) -> Result<String, String> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read '{path}': {e}"))?;
     if crate::sequence::is_sequence(&content) {
         let diagram = crate::sequence::parse(&content).map_err(|e| e.to_string())?;
         Ok(crate::sequence::render_svg(&diagram, theme))
+    } else if crate::class::is_class(&content) {
+        let diagram = crate::class::parse(&content).map_err(|e| e.to_string())?;
+        Ok(crate::class::render_svg(&diagram, theme))
+    } else if crate::gantt::is_gantt(&content) {
+        let diagram = crate::gantt::parse(&content).map_err(|e| e.to_string())?;
+        Ok(crate::gantt::render_svg(&diagram, theme))
     } else {
         let diagram = parser::parse(&content).map_err(|e| e.to_string())?;
         let laid = layout::layout(&diagram);

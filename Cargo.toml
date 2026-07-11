@@ -2,7 +2,7 @@
 name = "diagram"
 version = "0.1.2"
 edition = "2024"
-description = "A Rust CLI and MCP server for manipulating diagram"
+description = "Native Rust diagram platform: render, generate, analyze, and interchange (Mermaid/PlantUML compatible)"
 authors = ["Ying Kit WONG"]
 license = "Apache-2.0"
 repository = "https://github.com/yingkitw/diagram"

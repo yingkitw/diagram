@@ -1,65 +1,60 @@
 # TODO
 
-## Completed
+## Vision
 
-- [x] Core data model (`Node`, `Edge`, `Diagram`, `Subgraph`, styles, classDefs)
-- [x] Mermaid flowchart parser (`graph TD/LR/RL/BT`)
-- [x] Layered graph layout algorithm (BFS-based, supports all 4 directions)
-- [x] SVG renderer with dark theme and 6 node shapes
-- [x] CLI: `parse`, `info`, `render`, `mcp`, `add-node`, `remove-node`, `update-node`, `add-edge`, `remove-edge`, `get-mermaid`, `set-mermaid`, `list-nodes`, `list-edges`
-- [x] MCP server with 12 tools (`parse_diagram`, `get_info`, `render_svg`, `add_node`, `remove_node`, `update_node`, `add_edge`, `remove_edge`, `get_mermaid`, `set_mermaid`, `list_nodes`, `list_edges`)
-- [x] Roundtrip fidelity: parse → manipulate → `to_mermaid()` → parse
-- [x] Node shapes: rect, diamond, stadium, hexagon, cylinder, circle
-- [x] Edge styles: arrow (`-->`), dashed (`-.->`), thick (`==>`)
-- [x] Subgraph support (`subgraph ... end`)
-- [x] Styling directives: `style`, `classDef`, `class`
-- [x] Quoted node IDs with special characters
-- [x] Integration tests for all `examples/` roundtrip + render
-- [x] CI: GitHub Actions (test + build)
+Platform pillars (see `CONTEXT.md`, `ARCHITECTURE.md`, ADR-0001):
 
-## Short-term
+1. **Render** — layout → SVG/PNG/PDF, Chromium-free
+2. **Generate** — structured create/edit (CLI + MCP)
+3. **Analyze** — validate, diff, merge, metrics on IR
+4. **Interchange** — import/export via canonical IR; Mermaid/PlantUML Compatibility
 
-- [x] `update-edge` CLI + MCP tool (change label or style on existing edge)
-- [x] `get-node` / `get-edge` CLI + MCP tools (retrieve single item)
-- [x] `validate` CLI command + `validate_diagram` MCP tool (orphaned nodes, dangling edges, cycles)
-- [x] Batch `add-nodes` / `add-edges` MCP tools (reduce round-trips)
-- [x] CLI unit tests (subprocess integration)
-- [x] MCP resource support (`file://{path}` template, read `.mmd` files)
-- [x] MCP prompts (`create_flowchart`, `refactor_diagram`)
+Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, analysis without browser/JVM, multi-format IR — not “another Mermaid clone.”
 
-## Medium-term
+## Completed (foundation)
 
-- [x] Subgraph visual rendering in SVG (bounding boxes with dashed borders and labels)
-- [x] Node styling (`style` + `classDef`/`class`) applied to SVG fill/stroke
-- [x] Edge styling (`linkStyle`) applied to SVG output (stroke color + width)
-- [x] Watch mode: `diagram render --watch` auto-re-renders SVG on file change
-- [x] Edge routing improvements (reduce crossings, curved beziers)
-- [x] Theme support: light/dark toggle in renderer
-- [x] Tagged releases + `cargo publish` (dry-run passes, crate ready)
-- [x] Diagram diff / merge utilities
+- [x] Flowchart IR + Mermaid parse/render (shapes, edges, subgraphs, styles, themes)
+- [x] Sequence / class / gantt Mermaid MVP parse → SVG
+- [x] CLI + MCP generate/edit (flowchart), validate, diff/merge
+- [x] Live preview, interactive SVG (href/tooltip), watch mode
+- [x] Product reposition: CONTEXT, ADR-0001, architecture target (IR + adapters)
+
+## Short-term (platform spine)
+
+- [ ] Canonical **IR**: `Document` / `Diagram` / `Kind` + JSON schema (`diagram ir` / `parse --format json`)
+- [ ] **Format detection** + `import` / `export` CLI + MCP tools (path + `--from` / `--to`)
+- [ ] Fold Mermaid parsers behind `formats::mermaid` (behavior-preserving move)
+- [ ] Analysis pack v1: metrics (node/edge counts, depth, cycle list, orphan rate) as JSON
+- [ ] Generation: kind-aware `create` scaffold (`diagram create --kind flowchart|sequence|class|gantt`)
+
+## Medium-term (interchange + render)
+
+- [ ] PlantUML adapter MVP (activity/sequence or class — pick one kind first)
+- [ ] Graphviz DOT import (digraph subset) → flowchart IR
+- [ ] PNG export (resvg or similar; keep binary lean)
+- [ ] Multi-diagram Document (several kinds / figures per file)
+- [ ] Markdown pipeline: extract fenced blocks → render → rewrite links
+- [ ] Lossiness report on export (what could not be represented)
 
 ## Longer-term
 
-- [x] Web UI — live browser preview (`diagram preview`)
-- [x] Interactive SVG output (links, tooltips, click events)
-- [x] Support for sequence diagrams (MVP: participants, `->>` / `-->>`, SVG)
-- [ ] Support for class diagrams
-- [ ] Support for Gantt charts
-- [ ] VSCode extension via MCP
-- [ ] Plugin system for custom shape renderers
-- [ ] Multi-diagram file support (multiple graphs per `.mmd` file)
-- [ ] PNG/PDF export (parity with mermaid-cli / Kroki)
-- [ ] Markdown in-place render (find ```mermaid blocks, write SVGs)
-- [ ] State / ER diagram types (common Mermaid coverage gap vs mermaid.js)
-- [ ] Sequence diagram extras (notes, loops, alt/opt, activations)
+- [ ] D2 / Excalidraw / Kroki-adjacent adapters as demand warrants
+- [ ] PDF export
+- [ ] State + ER kinds (IR + Mermaid Compatibility)
+- [ ] Sequence/class/gantt extras (notes, loops, interfaces, milestones, …)
+- [ ] VS Code extension (thin client over MCP + preview)
+- [ ] Plugin API for custom shapes / render backends
+- [ ] Wasm embed for browser preview without local server
+- [ ] Semantic diff UX (structural, not only text)
 
 ## Brainstorming (competitive)
 
-Gaps vs mermaid-cli, Kroki, and mermaid.js that would strengthen this crate:
+| Advantage we want | vs Mermaid | vs PlantUML |
+|-------------------|------------|-------------|
+| Native speed / small install | No Node/Chromium | No JVM |
+| MCP agent generate+analyze | Weak / external | Weak / external |
+| Multi-format IR hub | Mermaid-centric | PlantUML-centric |
+| Structural analysis API | Limited | Limited |
+| Docs CI without heavy runtimes | mmdc heavy | Docker/Java common |
 
-- Broader diagram-type coverage (sequence, class, state, ER, Gantt) — largest parity gap
-- Multi-diagram / markdown pipeline support for docs CI
-- Raster export without Chromium (keep the native-binary advantage)
-- VS Code / editor UX beyond raw MCP stdio
-- Optional wasm embed for browser preview without a local server
-
+Prioritize: IR spine → PlantUML or DOT adapter → PNG → markdown pipeline → editor UX.

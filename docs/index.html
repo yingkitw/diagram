@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>diagram — platform docs</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --fg: #e7ecf1;
+      --muted: #8b9aab;
+      --accent: #3d9cf0;
+      --rule: #243041;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(ellipse 80% 50% at 20% -10%, #1a3a55 0%, transparent 55%),
+        var(--bg);
+      color: var(--fg);
+      line-height: 1.55;
+    }
+    main {
+      max-width: 40rem;
+      margin: 0 auto;
+      padding: 4rem 1.5rem 5rem;
+    }
+    .brand {
+      font-size: 2.75rem;
+      font-weight: 650;
+      letter-spacing: -0.03em;
+      margin: 0 0 0.5rem;
+    }
+    .lede {
+      color: var(--muted);
+      font-size: 1.1rem;
+      margin: 0 0 2rem;
+    }
+    h2 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin: 2rem 0 0.75rem;
+      font-weight: 600;
+    }
+    ul { padding-left: 1.1rem; margin: 0; }
+    li { margin: 0.35rem 0; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .pillars {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem 1.25rem;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .pillars li {
+      border-top: 1px solid var(--rule);
+      padding-top: 0.65rem;
+    }
+    .pillars strong { display: block; color: var(--fg); }
+    .pillars span { color: var(--muted); font-size: 0.92rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="brand">diagram</p>
+    <p class="lede">Native Rust platform for rendering, generating, analyzing, and interchanging diagrams — Mermaid/PlantUML compatible, not Mermaid-locked.</p>
+
+    <h2>Pillars</h2>
+    <ul class="pillars">
+      <li><strong>Render</strong><span>Chromium-free layout → SVG</span></li>
+      <li><strong>Generate</strong><span>CLI + MCP structured edits</span></li>
+      <li><strong>Analyze</strong><span>Validate, diff, merge, metrics</span></li>
+      <li><strong>Interchange</strong><span>Canonical IR + format adapters</span></li>
+    </ul>
+
+    <h2>Docs</h2>
+    <ul>
+      <li><a href="../README.md">README</a> — positioning and quick start</li>
+      <li><a href="../CONTEXT.md">CONTEXT</a> — domain language</li>
+      <li><a href="../ARCHITECTURE.md">ARCHITECTURE</a> — target vs current</li>
+      <li><a href="../SPEC.md">SPEC</a> — contracts and Mermaid Compatibility</li>
+      <li><a href="../TODO.md">TODO</a> — pillar-oriented backlog</li>
+      <li><a href="adr/0001-canonical-ir-and-format-adapters.md">ADR-0001</a> — IR + adapters decision</li>
+    </ul>
+  </main>
+</body>
+</html>
