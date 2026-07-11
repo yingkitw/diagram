@@ -4,7 +4,6 @@ use crate::class::{self, ClassDiagram};
 use crate::diagram as flowchart;
 use crate::gantt::{self, GanttDiagram};
 use crate::layout;
-use crate::parser;
 use crate::renderer::{self, Theme};
 use crate::sequence::{self, SequenceDiagram};
 use serde::{Deserialize, Serialize};
@@ -267,16 +266,7 @@ impl From<&str> for IrError {
 
 /// Parse Mermaid Compatibility source into a single-diagram Document.
 pub fn from_mermaid(source: &str) -> Result<Document, IrError> {
-    let diagram = if sequence::is_sequence(source) {
-        Diagram::Sequence(sequence::parse(source).map_err(|e| e.to_string())?)
-    } else if class::is_class(source) {
-        Diagram::Class(class::parse(source).map_err(|e| e.to_string())?)
-    } else if gantt::is_gantt(source) {
-        Diagram::Gantt(gantt::parse(source).map_err(|e| e.to_string())?)
-    } else {
-        Diagram::Flowchart(parser::parse(source).map_err(|e| e.to_string())?)
-    };
-    Ok(Document::single(diagram))
+    crate::formats::mermaid::parse_to_document(source)
 }
 
 /// Load a Document from a file path (Mermaid or JSON IR, by detection).

@@ -227,6 +227,37 @@ fn test_cli_ir_json_document() {
 }
 
 #[test]
+fn test_cli_metrics_flowchart() {
+    let tmp = temp_mmd("graph TD\n    A-->B\n    B-->A\n    C[alone]\n");
+    let path = tmp.to_str().unwrap();
+    let (stdout, _, code) = run(&["metrics", path]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("\"kind\": \"flowchart\""), "stdout: {stdout}");
+    assert!(stdout.contains("\"orphans\": 1"), "stdout: {stdout}");
+    assert!(stdout.contains("cycle detected"), "stdout: {stdout}");
+}
+
+#[test]
+fn test_cli_metrics_sequence() {
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/sequence.mmd");
+    let (stdout, _, code) = run(&["metrics", path.to_str().unwrap()]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("\"kind\": \"sequence\""), "stdout: {stdout}");
+    assert!(stdout.contains("\"messages\""), "stdout: {stdout}");
+}
+#[test]
+fn test_cli_create_flowchart() {
+    let out = std::env::temp_dir().join(format!("diagram_cli_create_{}.mmd", std::process::id()));
+    let path = out.to_str().unwrap();
+    let (stdout, _, code) = run(&["create", "--kind", "flowchart", "--output", path]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("Created flowchart"), "stdout: {stdout}");
+    let body = std::fs::read_to_string(&out).unwrap();
+    assert!(body.contains("graph TD"));
+    let _ = std::fs::remove_file(&out);
+}
+
+#[test]
 fn test_cli_import_export_roundtrip() {
     use std::fs;
     let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.mmd");

@@ -1,8 +1,10 @@
+pub mod analyze;
 pub mod class;
 pub mod cli;
 pub mod diagram;
 pub mod formats;
 pub mod gantt;
+pub mod generate;
 pub mod ir;
 pub mod layout;
 pub mod mcp;

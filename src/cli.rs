@@ -153,6 +153,19 @@ pub enum Cli {
         path: String,
     },
 
+    #[command(about = "Structural metrics as JSON (depth, orphans, cycles, counts)")]
+    Metrics {
+        path: String,
+    },
+
+    #[command(about = "Create a new diagram scaffold (flowchart, sequence, class, gantt)")]
+    Create {
+        #[arg(long, help = "Diagram kind: flowchart, sequence, class, gantt")]
+        kind: String,
+        #[arg(long, short, help = "Output file path (.mmd or .json)")]
+        output: String,
+    },
+
     #[command(about = "Show differences between two diagrams")]
     Diff {
         left: String,
@@ -210,6 +223,8 @@ impl Cli {
             Self::ListNodes { path } => cmd_list_nodes(path),
             Self::ListEdges { path } => cmd_list_edges(path),
             Self::Validate { path } => cmd_validate(path),
+            Self::Metrics { path } => cmd_metrics(path),
+            Self::Create { kind, output } => cmd_create(kind, output),
             Self::Diff { left, right } => cmd_diff(left, right),
             Self::Merge { left, right, output } => cmd_merge(left, right, output),
             Self::Preview { path, port, theme } => {
@@ -471,6 +486,19 @@ fn cmd_validate(path: &str) -> anyhow::Result<()> {
             println!("  - {issue}");
         }
     }
+    Ok(())
+}
+
+fn cmd_metrics(path: &str) -> anyhow::Result<()> {
+    let doc = crate::ir::load_path(path).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let m = crate::analyze::metrics(&doc);
+    println!("{}", serde_json::to_string_pretty(&m)?);
+    Ok(())
+}
+
+fn cmd_create(kind: &str, output: &str) -> anyhow::Result<()> {
+    let kind = crate::generate::write_scaffold(kind, output).map_err(|e| anyhow::anyhow!("{e}"))?;
+    println!("Created {} diagram at {output}", kind);
     Ok(())
 }
 

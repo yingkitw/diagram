@@ -121,6 +121,8 @@ Commands:
   list-nodes   List all nodes
   list-edges   List all edges
   validate     Validate diagram
+  metrics      Structural metrics as JSON
+  create       Create a new diagram scaffold
   diff         Compare two diagrams
   merge        Merge two diagrams
   preview      Live browser SVG preview
@@ -136,6 +138,8 @@ All tools accept `path` (path to `.mmd` file) plus operation-specific parameters
 | `get_info` | path | Summary JSON (kind, counts, ir_version) |
 | `import_diagram` | path, output, from? | Status JSON |
 | `export_diagram` | path, output, to? | Status JSON |
+| `metrics_diagram` | path | Metrics JSON |
+| `create_diagram` | kind, output | Status JSON |
 | `render_svg` | path, theme? | SVG string |
 | `diff_diagram` | left, right | Diff JSON |
 | `merge_diagram` | left, right, output | Status JSON |
@@ -206,11 +210,13 @@ struct ClassApply {
 
 The crate exposes a public library API via `src/lib.rs`:
 ```rust
+pub mod analyze;
 pub mod class;
 pub mod cli;
 pub mod diagram;
 pub mod formats;
 pub mod gantt;
+pub mod generate;
 pub mod ir;
 pub mod layout;
 pub mod mcp;

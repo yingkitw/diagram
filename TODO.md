@@ -24,9 +24,9 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 
 - [x] Canonical **IR**: `Document` / `Diagram` / `Kind` + JSON (`diagram ir`, `parse`, `import`/`export`)
 - [x] **Format detection** + `import` / `export` CLI + MCP tools
-- [ ] Fold Mermaid parsers behind `formats::mermaid` (behavior-preserving move)
-- [ ] Analysis pack v1: metrics (node/edge counts, depth, cycle list, orphan rate) as JSON
-- [ ] Generation: kind-aware `create` scaffold (`diagram create --kind flowchart|sequence|class|gantt`)
+- [x] Analysis pack v1: metrics (node/edge counts, depth, cycle list, orphan rate) as JSON
+- [x] Fold Mermaid parsers behind `formats::mermaid` (behavior-preserving move)
+- [x] Generation: kind-aware `create` scaffold (`diagram create --kind flowchart|sequence|class|gantt`)
 
 ## Medium-term (interchange + render)
 

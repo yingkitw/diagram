@@ -15,6 +15,14 @@ struct FilePath {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct CreateParams {
+    #[schemars(description = "Diagram kind: flowchart, sequence, class, or gantt")]
+    kind: String,
+    #[schemars(description = "Output file path (.mmd or .json)")]
+    output: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct ImportParams {
     #[schemars(description = "Source diagram file path")]
     path: String,
@@ -630,6 +638,35 @@ impl DiagramServer {
         CallToolResult::success(vec![ContentBlock::text(
             serde_json::to_string_pretty(&nodes).unwrap_or_default(),
         )])
+    }
+
+    #[tool(description = "Structural metrics JSON (depth, orphans, cycles, counts)")]
+    async fn metrics_diagram(&self, Parameters(params): Parameters<FilePath>) -> CallToolResult {
+        match crate::ir::load_path(&params.path) {
+            Ok(doc) => {
+                let m = crate::analyze::metrics(&doc);
+                match serde_json::to_string_pretty(&m) {
+                    Ok(json) => CallToolResult::success(vec![ContentBlock::text(json)]),
+                    Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
+                }
+            }
+            Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
+        }
+    }
+
+    #[tool(description = "Create a new diagram scaffold file")]
+    async fn create_diagram(&self, Parameters(params): Parameters<CreateParams>) -> CallToolResult {
+        match crate::generate::write_scaffold(&params.kind, &params.output) {
+            Ok(kind) => {
+                let json = serde_json::json!({
+                    "ok": true,
+                    "kind": kind.to_string(),
+                    "output": params.output,
+                });
+                CallToolResult::success(vec![ContentBlock::text(json.to_string())])
+            }
+            Err(e) => CallToolResult::error(vec![ContentBlock::text(e)]),
+        }
     }
 
     #[tool(description = "Validate diagram for orphaned nodes, dangling edges, and cycles")]

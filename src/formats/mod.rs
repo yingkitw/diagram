@@ -1,6 +1,8 @@
 //! Format detection and import/export adapters around the canonical IR.
 
-use crate::ir::{self, Document, IrError};
+pub mod mermaid;
+
+use crate::ir::{Document, IrError};
 
 /// Concrete serialization format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,7 +49,7 @@ pub fn detect(source: &str, path: Option<&str>) -> Format {
 /// Import source text in the given format into a Document.
 pub fn import_str(source: &str, format: Format) -> Result<Document, IrError> {
     match format {
-        Format::Mermaid => ir::from_mermaid(source),
+        Format::Mermaid => mermaid::parse_to_document(source),
         Format::JsonIr => Document::from_json(source)
             .map_err(|e| IrError::from(format!("invalid JSON IR: {e}"))),
     }

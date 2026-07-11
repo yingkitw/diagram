@@ -32,10 +32,13 @@ diagram export sample.ir.json --output out.mmd --to mermaid
 
 # Analyze
 diagram validate sample.mmd
+diagram metrics sample.mmd
 diagram info sample.mmd
 diagram diff base.mmd modified.mmd
 
-# Generate / edit (flowchart IR ops; more kinds over time)
+# Generate
+diagram create --kind flowchart --output new.mmd
+diagram create --kind sequence --output new.json
 diagram add-node sample.mmd X "New Node" --shape stadium
 diagram mcp   # agent tools over stdio
 ```
@@ -59,8 +62,10 @@ diagram info sample.mmd
 diagram render sample.mmd [--output out.svg] [--watch] [--theme dark|light]
 diagram preview sample.mmd [--port 3030] [--theme dark|light]
 diagram validate sample.mmd
+diagram metrics sample.mmd
 diagram diff left.mmd right.mmd
 diagram merge left.mmd right.mmd --output merged.mmd
+diagram create --kind flowchart --output new.mmd
 diagram add-node | remove-node | update-node | add-edge | remove-edge | update-edge ...
 diagram get-node | get-edge | list-nodes | list-edges | get-mermaid | set-mermaid ...
 diagram mcp
@@ -114,5 +119,5 @@ src/
 ├── main.rs / cli.rs / mcp.rs / preview.rs
 ├── diagram.rs / parser.rs / layout.rs / renderer.rs   # flowchart IR + Mermaid
 ├── sequence.rs / class.rs / gantt.rs                  # kind modules (Mermaid in → IR → SVG)
-└── …                                                  # future: ir/, formats/
+├── ir.rs / formats/ / analyze.rs / generate.rs        # canonical IR, adapters, analysis, scaffolds
 ```

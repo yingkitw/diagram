@@ -35,7 +35,9 @@ main.rs
   ├── class.rs    — Mermaid class → class IR → SVG
   ├── gantt.rs    — Mermaid gantt → gantt IR → SVG
   ├── ir.rs       — canonical Document / Diagram / Kind
-  ├── formats.rs  — format detect, import, export
+  ├── formats/    — format detect, import, export; `mermaid` adapter
+  ├── analyze.rs  — structural metrics on IR
+  ├── generate.rs — kind-aware scaffolds (create)
   ├── layout.rs   — flowchart layered layout
   └── renderer.rs — flowchart Layout → SVG
 ```
@@ -47,12 +49,12 @@ Detection today: `formats::detect` on path/content → Mermaid or JSON IR → `i
 | Area | Responsibility | Status |
 |------|----------------|--------|
 | `ir` | Canonical `Document` / `Diagram` / `Kind`; JSON | Shipped |
-| `formats` | Adapters: Mermaid, JSON IR; PlantUML, DOT later | Partial |
+| `formats` | Adapters: Mermaid, JSON IR; PlantUML, DOT later | Partial (Mermaid folded) |
 | `render` | Kind-aware layout + SVG/PNG/PDF backends | Partial (SVG) |
-| `analyze` | Validate, diff, merge, metrics (IR in → report out) | Partial |
-| `generate` | CLI/MCP mutations and templates against IR | Partial |
+| `analyze` | Validate, diff, merge, metrics (IR in → report out) | Partial (metrics shipped) |
+| `generate` | CLI/MCP mutations and templates against IR | Partial (create scaffolds) |
 
-Migrate existing `parser` / `sequence` / `class` / `gantt` into `formats::mermaid` + kind IR types without breaking CLI behavior.
+Mermaid parsers live under `formats::mermaid`; kind IR types remain in `parser` / `sequence` / `class` / `gantt`.
 
 ## Data flow (today)
 
