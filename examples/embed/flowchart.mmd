@@ -1,0 +1,7 @@
+%% Embed demo: compact flowchart (Mermaid)
+graph TD
+  request[Request] --> auth{Authorized?}
+  auth -->|Yes| handler[Handle]
+  auth -->|No| deny[Deny]
+  handler --> response[Response]
+  deny --> response

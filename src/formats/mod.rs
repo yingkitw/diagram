@@ -68,6 +68,10 @@ pub fn detect(source: &str, path: Option<&str>) -> Format {
     if dot::is_dot(source) {
         return Format::Dot;
     }
+    // Pathless Mermaid (%% comments + headers) must win over greedy D2 heuristics.
+    if path.is_none() && mermaid::looks_like_mermaid(source) {
+        return Format::Mermaid;
+    }
     if d2::is_d2(source) {
         return Format::D2;
     }

@@ -26,11 +26,13 @@
 
 ```
 main.rs
-  ├── cli.rs       — clap CLI dispatch
-  ├── mcp.rs       — MCP tools (stdio)
-  ├── preview.rs   — localhost live SVG preview; render to SVG/PNG/PDF
-  ├── png.rs       — SVG → PNG via resvg
-  ├── pdf.rs       — SVG → vector PDF via svg2pdf (usvg)
+  ├── cli.rs       — clap CLI dispatch (native feature)
+  ├── mcp.rs       — MCP tools stdio (native)
+  ├── embed.rs     — string-in SVG/JSON helpers (Wasm + embeds)
+  ├── wasm.rs      — wasm-bindgen exports (`render_to_svg`, `parse_to_ir_json`)
+  ├── preview.rs   — localhost live SVG preview; render to SVG/PNG/PDF (native)
+  ├── png.rs       — SVG → PNG via resvg (native)
+  ├── pdf.rs       — SVG → vector PDF via svg2pdf (usvg) (native)
   ├── lossiness.rs — export fidelity reports per Format
   ├── composite.rs — multi-diagram vertical SVG composite
   ├── markdown.rs  — fenced block extract → render → rewrite links
@@ -61,7 +63,7 @@ main.rs
 |------|----------------|--------|
 | `ir` | Canonical `Document` / `Diagram` / `Kind`; JSON | Shipped |
 | `formats` | Mermaid, JSON IR, DOT, D2, PlantUML (seq/class/activity) | Partial — D2 containers + DOT colors/URL; expand further as needed |
-| `render` | Kind-aware layout + SVG/PNG/PDF backends | Shipped — PDF is vector (svg2pdf) |
+| `render` | Kind-aware layout + SVG/PNG/PDF backends | Shipped — PDF vector; SVG also via Wasm embed |
 | `analyze` | Validate, diff, merge, metrics | Partial — diff + metrics shipped; merge flowchart-only |
 | `generate` | CLI/MCP mutations and templates | Partial — create + flowchart edit |
 | `lossiness` | Export fidelity warnings per Format | Shipped v1 |
@@ -112,6 +114,10 @@ SVG → usvg tree → svg2pdf path/content streams → single-page PDF. Filters 
 ### Preview server
 
 Minimal `tokio` HTTP on localhost; HTML polls `/svg`.
+
+### Wasm embed
+
+`embed` + `wasm` features expose `render_to_svg` / `parse_to_ir_json` for browsers (`make wasm` → `examples/wasm/`). Default `native` feature keeps CLI/MCP/PNG/PDF off the Wasm dependency graph.
 
 ### VS Code extension
 

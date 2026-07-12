@@ -30,19 +30,48 @@ keywords = [
     "render",
     "visualization",
     "architecture",
+    "wasm",
 ]
-categories = ["command-line-utilities", "development-tools", "visualization", "parsing"]
+categories = ["command-line-utilities", "development-tools", "visualization", "parsing", "wasm"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "diagram"
+path = "src/main.rs"
+required-features = ["native"]
+
+[features]
+default = ["native"]
+# CLI, MCP, preview server, PNG/PDF (filesystem + tokio)
+native = [
+    "dep:clap",
+    "dep:rmcp",
+    "dep:tokio",
+    "dep:anyhow",
+    "dep:schemars",
+    "dep:notify",
+    "dep:resvg",
+    "dep:usvg",
+    "dep:tiny-skia",
+    "dep:svg2pdf",
+]
+# Browser embed (wasm-bindgen); build with --no-default-features --features wasm
+wasm = ["dep:wasm-bindgen", "dep:console_error_panic_hook"]
 
 [dependencies]
-rmcp = { version = "2", features = ["server", "transport-io", "macros"] }
-clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["full"] }
-anyhow = "1"
-schemars = "1"
-notify = "7"
-resvg = "0.45"
-usvg = "0.45"
-tiny-skia = "0.11"
-svg2pdf = "0.13"
+clap = { version = "4", features = ["derive"], optional = true }
+rmcp = { version = "2", features = ["server", "transport-io", "macros"], optional = true }
+tokio = { version = "1", features = ["full"], optional = true }
+anyhow = { version = "1", optional = true }
+schemars = { version = "1", optional = true }
+notify = { version = "7", optional = true }
+resvg = { version = "0.45", optional = true }
+usvg = { version = "0.45", optional = true }
+tiny-skia = { version = "0.11", optional = true }
+svg2pdf = { version = "0.13", optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }

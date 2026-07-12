@@ -15,7 +15,7 @@ fn is_d2_attr_key(key: &str) -> bool {
 
 /// Whether source looks like D2 (not Mermaid, DOT, PlantUML, or JSON IR).
 pub fn is_d2(source: &str) -> bool {
-    let trimmed = source.trim_start();
+    let trimmed = skip_leading_comments(source);
     if trimmed.starts_with('{')
         || trimmed.starts_with("digraph")
         || trimmed.starts_with("strict digraph")
@@ -33,6 +33,7 @@ pub fn is_d2(source: &str) -> bool {
         || trimmed.starts_with("graph BT")
         || trimmed.starts_with("graph RL")
         || trimmed.starts_with("graph TB")
+        || trimmed.starts_with("flowchart ")
     {
         return false;
     }
@@ -42,7 +43,7 @@ pub fn is_d2(source: &str) -> bool {
 
     for line in source.lines() {
         let l = line.trim();
-        if l.is_empty() || l.starts_with('#') {
+        if l.is_empty() || l.starts_with('#') || l.starts_with("%%") {
             continue;
         }
         if l.starts_with("direction:") {
@@ -53,6 +54,21 @@ pub fn is_d2(source: &str) -> bool {
         }
     }
     false
+}
+
+fn skip_leading_comments(source: &str) -> &str {
+    let mut rest = source;
+    loop {
+        let trimmed = rest.trim_start();
+        if trimmed.starts_with("%%") || trimmed.starts_with('#') {
+            if let Some((_, after)) = trimmed.split_once('\n') {
+                rest = after;
+                continue;
+            }
+            return "";
+        }
+        return trimmed;
+    }
 }
 
 pub fn parse(source: &str) -> Result<Diagram, IrError> {
@@ -686,6 +702,23 @@ fn parse_connection(line: &str) -> Option<(String, String)> {
     let ops = ["<->", "->", "<-", "--"];
     for op in ops {
         if let Some(idx) = line.find(op) {
+            // Avoid Mermaid `-->` / `-.->` / `==>` matching D2 `->` / `--`.
+            if op == "->" {
+                let before = line[..idx].chars().last();
+                if matches!(before, Some('-' | '=' | '.')) {
+                    continue;
+                }
+            }
+            if op == "--" {
+                let after = line[idx + op.len()..].chars().next();
+                if matches!(after, Some('>' | '-' | '.')) {
+                    continue;
+                }
+                let before = line[..idx].chars().last();
+                if matches!(before, Some('-' | '=' | '.')) {
+                    continue;
+                }
+            }
             let left = line[..idx].trim();
             let rest = line[idx + op.len()..].trim();
             let right = rest
@@ -697,6 +730,17 @@ fn parse_connection(line: &str) -> Option<(String, String)> {
                 .next()
                 .unwrap_or("");
             if !left.is_empty() && !right.is_empty() {
+                // Mermaid node shapes: A[text], A{text}, A((text)) — not D2 ids.
+                if left.contains('[')
+                    || left.contains(']')
+                    || left.contains('{')
+                    || left.contains('(')
+                    || right.contains('[')
+                    || right.contains('{')
+                    || right.contains('(')
+                {
+                    continue;
+                }
                 return Some((left.to_string(), right.to_string()));
             }
         }
@@ -712,9 +756,11 @@ mod tests {
     #[test]
     fn is_d2_distinguishes_mermaid_and_dot() {
         assert!(!is_d2("graph TD\n  A-->B\n"));
+        assert!(!is_d2("%% comment\ngraph TD\n  A-->B\n"));
         assert!(!is_d2("digraph G { A -> B }"));
         assert!(is_d2("direction: right\na -> b\n"));
         assert!(is_d2("start -> end: go\n"));
+        assert!(!is_d2("sequenceDiagram\n  A->>B: hi\n"));
     }
 
     #[test]

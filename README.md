@@ -18,6 +18,7 @@
 - [Examples](#examples)
 - [MCP (AI agents)](#mcp-ai-agents)
 - [VS Code / Cursor](#vs-code--cursor)
+- [Wasm embed](#wasm-embed)
 - [Architecture](#architecture)
 - [Testing](#testing)
 - [Project layout](#project-layout)
@@ -26,7 +27,7 @@
 
 | Capability | Keywords |
 |------------|----------|
-| **Render** | mermaid svg, png export, pdf export, live preview, watch mode, dark/light theme |
+| **Render** | mermaid svg, png export, pdf export, live preview, wasm browser embed, watch mode, dark/light theme |
 | **Interchange** | import export, format conversion, canonical json ir, lossiness report |
 | **Analyze** | validate diagram, structural diff, merge flowcharts, metrics (cycles, depth, orphans) |
 | **Generate** | scaffold flowchart/sequence/class/gantt, cli edit nodes and edges |
@@ -122,6 +123,8 @@ Under `examples/`:
 | `simple-flowchart.dot` | Graphviz DOT |
 | `multi-document.json` | Multi-diagram JSON IR |
 | `doc-with-diagrams.md` | Markdown pipeline demo |
+| `embed/*` | Compact fixtures for Wasm/embed string API (all formats) |
+| `wasm/` | Browser demo (`make wasm` → `pkg/`) |
 
 ## MCP (AI agents)
 
@@ -158,6 +161,24 @@ cursor --extensionDevelopmentPath="$(pwd)/editors/vscode"
 
 See [`editors/vscode/README.md`](editors/vscode/README.md) for settings (`diagram.cliPath`, theme).
 
+## Wasm embed
+
+Browser SVG preview without a local server (parse + layout + SVG in Wasm):
+
+```bash
+# Requires: rustup target add wasm32-unknown-unknown && cargo install wasm-pack
+make wasm
+# Serve examples/wasm/ (needs the generated pkg/)
+python3 -m http.server -d examples/wasm 8080
+```
+
+JS API after `await init()`:
+
+- `render_to_svg(source, theme)` — Mermaid / DOT / D2 / PlantUML / JSON IR → SVG (`theme`: `dark`|`light`)
+- `parse_to_ir_json(source)` — same sources → Document IR JSON
+
+Native-only features (CLI, MCP, PNG/PDF, preview server) are behind the default `native` Cargo feature; Wasm builds use `--no-default-features --features wasm`.
+
 ## Architecture
 
 ```
@@ -176,17 +197,21 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CONTEXT.md`](CONTEXT.md), and [`docs
 
 ```bash
 cargo test
+cargo test --test embed_tests   # Wasm/embed string API × examples/embed
 make vscode-check   # validates editors/vscode package.json + extension.js
+make wasm-check     # typecheck Wasm feature for wasm32-unknown-unknown
 ```
 
 ## Project layout
 
 ```
 src/
-├── main.rs / cli.rs / mcp.rs / preview.rs
+├── main.rs / cli.rs / mcp.rs / preview.rs   # native feature
+├── embed.rs / wasm.rs                       # browser embed
 ├── ir.rs / formats/ / lossiness.rs / analyze.rs / generate.rs / markdown.rs / composite.rs
 ├── diagram.rs / parser.rs / layout.rs / renderer.rs   # flowchart
 ├── sequence.rs / class.rs / gantt.rs / state.rs / er.rs
-├── png.rs / pdf.rs
-editors/vscode/                                        # VS Code / Cursor extension
+├── png.rs / pdf.rs                          # native feature
+editors/vscode/                              # VS Code / Cursor extension
+examples/wasm/                               # Wasm demo (pkg/ from `make wasm`)
 ```

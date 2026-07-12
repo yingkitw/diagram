@@ -1,0 +1,16 @@
+# Embed demo: D2 with container
+direction: right
+
+parse: Parse {
+  shape: diamond
+}
+render: Render
+ship: Ship
+
+core: {
+  parse
+  render
+}
+
+parse -> render
+render -> ship

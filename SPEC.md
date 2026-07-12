@@ -311,11 +311,23 @@ pub mod state;
 
 Settings: `diagram.cliPath`, `diagram.theme`, `diagram.autoPreviewOnSave`.
 
+## Wasm embed
+
+Feature `wasm` (build with `--no-default-features --features wasm`) exports:
+
+| JS API | Contract |
+|--------|----------|
+| `render_to_svg(source, theme)` | Auto-detect Format → IR → SVG (`theme`: `dark`\|`light`) |
+| `parse_to_ir_json(source)` | Auto-detect Format → Document IR JSON |
+
+Demo: `make wasm` then serve `examples/wasm/`. Fixtures: `examples/embed/` (covered by `cargo test --test embed_tests`). Native CLI/MCP/PNG/PDF stay behind the default `native` feature.
+
 ## Rendering
 
 1. Kind-specific IR → layout (flowchart: layered BFS) → SVG
-2. Optional PNG: SVG → pixmap (resvg)
-3. Optional PDF: SVG → usvg tree → vector PDF (svg2pdf)
+2. Optional PNG: SVG → pixmap (resvg) — native feature
+3. Optional PDF: SVG → usvg tree → vector PDF (svg2pdf) — native feature
+4. Optional Wasm: same SVG path in the browser via `embed` / `wasm`
 
 **Flowchart SVG features:** themes, subgraphs, bezier edges, styles/classDef, linkStyle, href/tooltip.
 

@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "diagrams": [
+    {
+      "kind": "flowchart",
+      "data": {
+        "rankdir": "TD",
+        "nodes": [
+          {
+            "id": "A",
+            "text": "Embed",
+            "shape": "Rect",
+            "href": null,
+            "tooltip": null
+          },
+          {
+            "id": "B",
+            "text": "SVG",
+            "shape": "Stadium",
+            "href": null,
+            "tooltip": null
+          }
+        ],
+        "edges": [
+          {
+            "from": "A",
+            "to": "B",
+            "label": "render",
+            "style": "Arrow"
+          }
+        ],
+        "subgraphs": [],
+        "styles": [],
+        "class_defs": [],
+        "class_applies": [],
+        "link_styles": []
+      }
+    }
+  ]
+}

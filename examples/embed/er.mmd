@@ -1,0 +1,8 @@
+%% Embed demo: ER
+erDiagram
+  CUSTOMER ||--o{ ORDER : places
+  ORDER ||--|{ LINE-ITEM : contains
+  CUSTOMER {
+    string id
+    string name
+  }

@@ -1,0 +1,8 @@
+%% Embed demo: gantt with milestone
+gantt
+  title Embed ship plan
+  dateFormat YYYY-MM-DD
+  section Build
+  Core       :a1, 2026-07-01, 7d
+  Wasm embed :milestone, m1, 2026-07-08, 0d
+  Polish     :a2, after a1, 5d

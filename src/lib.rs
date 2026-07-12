@@ -1,8 +1,8 @@
 pub mod analyze;
 pub mod class;
-pub mod cli;
 pub mod composite;
 pub mod diagram;
+pub mod embed;
 pub mod er;
 pub mod formats;
 pub mod gantt;
@@ -11,11 +11,21 @@ pub mod ir;
 pub mod layout;
 pub mod lossiness;
 pub mod markdown;
-pub mod mcp;
 pub mod parser;
-pub mod pdf;
-pub mod png;
-pub mod preview;
 pub mod renderer;
 pub mod sequence;
 pub mod state;
+
+#[cfg(feature = "native")]
+pub mod cli;
+#[cfg(feature = "native")]
+pub mod mcp;
+#[cfg(feature = "native")]
+pub mod pdf;
+#[cfg(feature = "native")]
+pub mod png;
+#[cfg(feature = "native")]
+pub mod preview;
+
+#[cfg(feature = "wasm")]
+pub mod wasm;

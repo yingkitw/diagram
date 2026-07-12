@@ -1,0 +1,6 @@
+@startuml
+actor User
+participant "diagram Wasm" as W
+User -> W: render_to_svg(source)
+W --> User: SVG
+@enduml

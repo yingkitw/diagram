@@ -184,9 +184,17 @@ pub fn process_markdown(
                     .map_err(|e| format!("Failed to write '{}': {e}", image_path.display()))?;
             }
             ImageFormat::Png => {
-                let png = crate::png::svg_to_png(&svg)?;
-                std::fs::write(&image_path, png)
-                    .map_err(|e| format!("Failed to write '{}': {e}", image_path.display()))?;
+                #[cfg(feature = "native")]
+                {
+                    let png = crate::png::svg_to_png(&svg)?;
+                    std::fs::write(&image_path, png)
+                        .map_err(|e| format!("Failed to write '{}': {e}", image_path.display()))?;
+                }
+                #[cfg(not(feature = "native"))]
+                {
+                    let _ = (&image_path, &svg);
+                    return Err("PNG markdown export requires the native feature".into());
+                }
             }
         }
 

@@ -2,6 +2,24 @@
 
 use crate::ir::{Diagram, Document, IrError};
 
+/// True when source has a Mermaid kind header (skips `%%` / blank lines).
+pub fn looks_like_mermaid(source: &str) -> bool {
+    for line in source.lines() {
+        let l = line.trim();
+        if l.is_empty() || l.starts_with("%%") {
+            continue;
+        }
+        return l.starts_with("graph ")
+            || l.starts_with("flowchart ")
+            || l.starts_with("sequenceDiagram")
+            || l.starts_with("classDiagram")
+            || l.starts_with("gantt")
+            || l.starts_with("stateDiagram")
+            || l.starts_with("erDiagram");
+    }
+    false
+}
+
 /// Parse Mermaid source into a single typed diagram.
 pub fn parse(source: &str) -> Result<Diagram, IrError> {
     if crate::sequence::is_sequence(source) {

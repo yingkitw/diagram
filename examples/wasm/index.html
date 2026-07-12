@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>diagram Wasm preview</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --fg: #e7ecf1;
+      --muted: #8b9aab;
+      --panel: #17202a;
+      --accent: #3d9cf0;
+      --rule: #243041;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--rule);
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.35rem;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+    }
+    header p {
+      margin: 0.35rem 0 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      padding: 1rem 1.5rem 2rem;
+      min-height: calc(100vh - 5rem);
+    }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+    label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.35rem; }
+    textarea {
+      width: 100%;
+      min-height: 22rem;
+      resize: vertical;
+      background: var(--panel);
+      color: var(--fg);
+      border: 1px solid var(--rule);
+      border-radius: 6px;
+      padding: 0.85rem;
+      font: 0.9rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .controls {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      margin: 0.75rem 0;
+      flex-wrap: wrap;
+    }
+    select, button {
+      background: var(--panel);
+      color: var(--fg);
+      border: 1px solid var(--rule);
+      border-radius: 6px;
+      padding: 0.45rem 0.8rem;
+      font: inherit;
+    }
+    button {
+      background: var(--accent);
+      border-color: transparent;
+      color: #041018;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #preview {
+      background: var(--panel);
+      border: 1px solid var(--rule);
+      border-radius: 6px;
+      min-height: 22rem;
+      padding: 1rem;
+      overflow: auto;
+    }
+    #preview svg { max-width: 100%; height: auto; display: block; }
+    #status { color: var(--muted); font-size: 0.85rem; min-height: 1.2em; }
+    #status.error { color: #f07178; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>diagram</h1>
+    <p>Wasm embed — render Mermaid / DOT / D2 / PlantUML / JSON IR to SVG in the browser (no local server).</p>
+  </header>
+  <div class="layout">
+    <section>
+      <label for="source">Source</label>
+      <textarea id="source">graph TD
+  A[Start] --> B{Works?}
+  B -->|Yes| C[Ship]
+  B -->|No| D[Debug]
+  D --> B
+</textarea>
+      <div class="controls">
+        <label for="theme" style="margin:0">Theme</label>
+        <select id="theme">
+          <option value="dark">dark</option>
+          <option value="light">light</option>
+        </select>
+        <button id="render" type="button">Render</button>
+      </div>
+      <div id="status">Build pkg first: <code>make wasm</code>, then serve this folder.</div>
+    </section>
+    <section>
+      <label>SVG preview</label>
+      <div id="preview"></div>
+    </section>
+  </div>
+  <script type="module">
+    const status = document.getElementById("status");
+    const preview = document.getElementById("preview");
+    const source = document.getElementById("source");
+    const theme = document.getElementById("theme");
+
+    const samples = {
+      flowchart: `graph TD
+  request[Request] --> auth{Authorized?}
+  auth -->|Yes| handler[Handle]
+  auth -->|No| deny[Deny]
+  handler --> response[Response]
+  deny --> response
+`,
+      sequence: `sequenceDiagram
+  participant Client
+  participant API
+  Client->>API: POST /login
+  API-->>Client: 200 OK
+`,
+      d2: `direction: right
+parse: Parse { shape: diamond }
+render: Render
+parse -> render
+`,
+      dot: `digraph embed {
+  rankdir=LR;
+  In -> Parse -> Out;
+}
+`,
+    };
+
+    async function main() {
+      let mod;
+      try {
+        mod = await import("./pkg/diagram.js");
+        await mod.default();
+      } catch (e) {
+        status.classList.add("error");
+        status.textContent = "Missing pkg/ — run `make wasm` from the repo root, then serve examples/wasm/";
+        console.error(e);
+        return;
+      }
+
+      const select = document.createElement("select");
+      select.id = "sample";
+      for (const key of Object.keys(samples)) {
+        const opt = document.createElement("option");
+        opt.value = key;
+        opt.textContent = key;
+        select.appendChild(opt);
+      }
+      document.querySelector(".controls").prepend(select);
+      select.addEventListener("change", () => {
+        source.value = samples[select.value];
+        render();
+      });
+
+      async function render() {
+        status.classList.remove("error");
+        status.textContent = "Rendering…";
+        try {
+          const svg = mod.render_to_svg(source.value, theme.value);
+          preview.innerHTML = svg;
+          status.textContent = "OK — see also examples/embed/ for full fixtures";
+        } catch (e) {
+          preview.innerHTML = "";
+          status.classList.add("error");
+          status.textContent = String(e);
+        }
+      }
+
+      document.getElementById("render").addEventListener("click", render);
+      theme.addEventListener("change", render);
+      await render();
+    }
+
+    main();
+  </script>
+</body>
+</html>

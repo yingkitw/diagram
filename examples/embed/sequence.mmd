@@ -1,0 +1,10 @@
+%% Embed demo: sequence with note
+sequenceDiagram
+  participant Client
+  participant API
+  participant DB
+  Client->>API: POST /login
+  API->>DB: lookup user
+  DB-->>API: row
+  Note over API: validate password
+  API-->>Client: 200 OK

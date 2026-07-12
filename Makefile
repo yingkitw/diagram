@@ -1,4 +1,4 @@
-.PHONY: run dev parse info render mcp test vscode-check
+.PHONY: run dev parse info render mcp test vscode-check wasm wasm-check
 
 # Run the MCP server
 run:
@@ -31,3 +31,11 @@ test:
 # Validate VS Code extension package
 vscode-check:
 	node editors/vscode/check.js
+
+# Build browser Wasm package into examples/wasm/pkg (requires wasm-pack + wasm32 target)
+wasm:
+	wasm-pack build --target web --out-dir examples/wasm/pkg -- --no-default-features --features wasm
+
+# Typecheck Wasm feature without packing
+wasm-check:
+	cargo check --no-default-features --features wasm --target wasm32-unknown-unknown

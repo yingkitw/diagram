@@ -1,0 +1,14 @@
+%% Embed demo: class with stereotype + cardinality
+classDiagram
+  class User {
+    +String id
+    +login()
+  }
+  class Repository <<interface>> {
+    +find(id)
+  }
+  class UserRepo {
+    +find(id)
+  }
+  User "1" --> "*" Order : places
+  UserRepo ..|> Repository

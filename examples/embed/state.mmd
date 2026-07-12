@@ -1,0 +1,7 @@
+%% Embed demo: state machine
+stateDiagram-v2
+  [*] --> Idle
+  Idle --> Loading: fetch
+  Loading --> Ready: ok
+  Loading --> Idle: error
+  Ready --> [*]

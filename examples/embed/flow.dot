@@ -1,0 +1,8 @@
+digraph embed {
+    rankdir=LR;
+    In [label="Ingest", shape=box];
+    Parse [label="Parse", shape=diamond];
+    Out [label="SVG", shape=ellipse];
+    In -> Parse [label="source"];
+    Parse -> Out [label="ok"];
+}

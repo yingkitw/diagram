@@ -54,7 +54,7 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 - [x] Class generics (`Stack~T~` / PlantUML `Stack<T>`)
 - [x] Class notes (`note for Class "…"`; PlantUML `note for` / left|right of)
 - [ ] Plugin API for custom shapes / render backends
-- [ ] Wasm embed for browser preview without local server
+- [x] Wasm embed for browser preview without local server
 - [x] Semantic diff v1 (IR-level `DocumentDiff` for all kinds incl. state/er; multi-diagram)
 
 ## Brainstorming (competitive)
@@ -67,7 +67,7 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 | Structural analysis API | Limited | Limited |
 | Docs CI without heavy runtimes | mmdc heavy | Docker/Java common |
 
-Prioritize next: Wasm embed; further DOT/D2 attribute surface as needed.
+Prioritize next: plugin API / further format depth as demand warrants.
 
 ## Audit follow-ups (done)
 
