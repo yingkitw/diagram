@@ -1,5 +1,6 @@
 //! Format detection and import/export adapters around the canonical IR.
 
+pub mod d2;
 pub mod dot;
 pub mod mermaid;
 pub mod plantuml;
@@ -12,6 +13,7 @@ pub enum Format {
     Mermaid,
     JsonIr,
     Dot,
+    D2,
     PlantUml,
 }
 
@@ -21,6 +23,7 @@ impl Format {
             "mermaid" | "mmd" => Some(Self::Mermaid),
             "json" | "ir" | "json-ir" | "json_ir" => Some(Self::JsonIr),
             "dot" | "graphviz" | "gv" => Some(Self::Dot),
+            "d2" | "d2lang" => Some(Self::D2),
             "plantuml" | "puml" => Some(Self::PlantUml),
             _ => None,
         }
@@ -31,6 +34,7 @@ impl Format {
             Self::Mermaid => "mermaid",
             Self::JsonIr => "json",
             Self::Dot => "dot",
+            Self::D2 => "d2",
             Self::PlantUml => "plantuml",
         }
     }
@@ -48,6 +52,9 @@ pub fn detect(source: &str, path: Option<&str>) -> Format {
     if dot::is_dot(source) {
         return Format::Dot;
     }
+    if d2::is_d2(source) {
+        return Format::D2;
+    }
     if let Some(p) = path {
         let lower = p.to_lowercase();
         if lower.ends_with(".json") {
@@ -55,6 +62,9 @@ pub fn detect(source: &str, path: Option<&str>) -> Format {
         }
         if lower.ends_with(".dot") || lower.ends_with(".gv") {
             return Format::Dot;
+        }
+        if lower.ends_with(".d2") {
+            return Format::D2;
         }
         if lower.ends_with(".puml") || lower.ends_with(".plantuml") {
             return Format::PlantUml;
@@ -73,6 +83,7 @@ pub fn import_str(source: &str, format: Format) -> Result<Document, IrError> {
         Format::JsonIr => Document::from_json(source)
             .map_err(|e| IrError::from(format!("invalid JSON IR: {e}"))),
         Format::Dot => dot::parse_to_document(source),
+        Format::D2 => d2::parse_to_document(source),
         Format::PlantUml => plantuml::parse_to_document(source),
     }
 }
@@ -85,6 +96,7 @@ pub fn export_str(doc: &Document, format: Format) -> Result<String, IrError> {
             .to_json()
             .map_err(|e| IrError::from(format!("JSON serialize failed: {e}"))),
         Format::Dot => dot::export_document(doc),
+        Format::D2 => d2::export_document(doc),
         Format::PlantUml => plantuml::export_document(doc),
     }
 }
@@ -105,6 +117,8 @@ pub fn export_path(doc: &Document, path: &str, to: Option<Format>) -> Result<For
             Format::JsonIr
         } else if lower.ends_with(".dot") || lower.ends_with(".gv") {
             Format::Dot
+        } else if lower.ends_with(".d2") {
+            Format::D2
         } else if lower.ends_with(".puml") || lower.ends_with(".plantuml") {
             Format::PlantUml
         } else {
@@ -137,6 +151,8 @@ pub fn export_with_report(
             Format::JsonIr
         } else if lower.ends_with(".dot") || lower.ends_with(".gv") {
             Format::Dot
+        } else if lower.ends_with(".d2") {
+            Format::D2
         } else if lower.ends_with(".puml") || lower.ends_with(".plantuml") {
             Format::PlantUml
         } else {
@@ -176,6 +192,32 @@ mod tests {
     #[test]
     fn detect_dot_extension() {
         assert_eq!(detect("digraph G {}", Some("x.dot")), Format::Dot);
+    }
+
+    #[test]
+    fn detect_d2_extension() {
+        assert_eq!(detect("a -> b\n", Some("x.d2")), Format::D2);
+    }
+
+    #[test]
+    fn d2_import_to_mermaid() {
+        let src = "start: Start\nstart -> end: go\n";
+        let doc = import_str(src, Format::D2).unwrap();
+        let out = export_str(&doc, Format::Mermaid).unwrap();
+        assert!(out.contains("Start") || out.contains("start"));
+        assert!(out.contains("end"));
+    }
+
+    #[test]
+    fn d2_export_roundtrip() {
+        let src = "direction: right\na: Alpha\nb: Beta\na -> b: link\n";
+        let doc = import_str(src, Format::D2).unwrap();
+        let out = export_str(&doc, Format::D2).unwrap();
+        assert!(out.contains("direction: right"));
+        assert!(out.contains("Alpha"));
+        let doc2 = import_str(&out, Format::D2).unwrap();
+        let mmd = export_str(&doc2, Format::Mermaid).unwrap();
+        assert!(mmd.contains("Alpha"));
     }
 
     #[test]

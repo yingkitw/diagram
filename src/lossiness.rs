@@ -36,6 +36,7 @@ pub fn report(doc: &Document, format: Format) -> LossinessReport {
             warnings: Vec::new(),
         },
         Format::Dot => dot_report(doc),
+        Format::D2 => d2_report(doc),
         Format::PlantUml => plantuml_report(doc),
         Format::Mermaid => mermaid_report(doc),
     }
@@ -100,6 +101,124 @@ fn dot_report(doc: &Document) -> LossinessReport {
         lossless,
         diagram_count: doc.diagrams.len(),
         warnings,
+    }
+}
+
+fn d2_report(doc: &Document) -> LossinessReport {
+    let mut warnings = Vec::new();
+    let flowchart_count = doc
+        .diagrams
+        .iter()
+        .filter(|d| matches!(d, Diagram::Flowchart(_)))
+        .count();
+
+    if flowchart_count == 0 {
+        return LossinessReport {
+            target_format: "d2".into(),
+            export_supported: false,
+            lossless: false,
+            diagram_count: doc.diagrams.len(),
+            warnings: vec![LossWarning {
+                diagram_index: None,
+                kind: None,
+                code: "format.unsupported_export".into(),
+                message: "D2 export supports flowchart diagrams only".into(),
+                count: None,
+            }],
+        };
+    }
+
+    let skipped = doc.diagrams.len() - flowchart_count;
+    if skipped > 0 {
+        warnings.push(LossWarning {
+            diagram_index: None,
+            kind: None,
+            code: "document.non_flowchart_skipped".into(),
+            message: "non-flowchart diagrams are omitted from D2 export".into(),
+            count: Some(skipped),
+        });
+    }
+
+    if doc.diagrams.len() > 1 {
+        warnings.push(LossWarning {
+            diagram_index: None,
+            kind: None,
+            code: "document.multi_diagram_blocks".into(),
+            message: "multi-diagram export emits separate blocks with # diagram N: comments".into(),
+            count: Some(flowchart_count),
+        });
+    }
+
+    for (i, d) in doc.diagrams.iter().enumerate() {
+        warnings.extend(diagram_d2_warnings(i, d));
+    }
+
+    let lossless = warnings.iter().all(|w| w.code == "document.multi_diagram_blocks");
+
+    LossinessReport {
+        target_format: "d2".into(),
+        export_supported: true,
+        lossless,
+        diagram_count: doc.diagrams.len(),
+        warnings,
+    }
+}
+
+fn diagram_d2_warnings(index: usize, d: &Diagram) -> Vec<LossWarning> {
+    let kind = d.kind().to_string();
+    match d {
+        Diagram::Flowchart(fc) => {
+            let mut out = Vec::new();
+            let hrefs = fc.nodes.iter().filter(|n| n.href.is_some()).count();
+            if hrefs > 0 {
+                out.push(warn(
+                    index,
+                    &kind,
+                    "flowchart.node.href",
+                    "node hyperlink (href) is not written to D2 export",
+                    hrefs,
+                ));
+            }
+            let tooltips = fc.nodes.iter().filter(|n| n.tooltip.is_some()).count();
+            if tooltips > 0 {
+                out.push(warn(
+                    index,
+                    &kind,
+                    "flowchart.node.tooltip",
+                    "node tooltip is not written to D2 export",
+                    tooltips,
+                ));
+            }
+            if !fc.styles.is_empty() {
+                out.push(warn(
+                    index,
+                    &kind,
+                    "flowchart.styles",
+                    "per-node style properties are not written to D2 export",
+                    fc.styles.len(),
+                ));
+            }
+            if !fc.class_defs.is_empty() || !fc.class_applies.is_empty() {
+                out.push(warn(
+                    index,
+                    &kind,
+                    "flowchart.class_defs",
+                    "classDef/class assignments are not written to D2 export",
+                    fc.class_defs.len() + fc.class_applies.len(),
+                ));
+            }
+            if !fc.subgraphs.is_empty() {
+                out.push(warn(
+                    index,
+                    &kind,
+                    "flowchart.subgraphs",
+                    "subgraph nesting is exported as flat D2 containers (connections may need manual adjustment)",
+                    fc.subgraphs.len(),
+                ));
+            }
+            out
+        }
+        Diagram::Sequence(_) | Diagram::Class(_) | Diagram::Gantt(_) => Vec::new(),
     }
 }
 
@@ -357,6 +476,22 @@ mod tests {
     fn plantuml_export_rejects_flowchart_only() {
         let doc = ir::from_mermaid("graph TD\n  A-->B\n").unwrap();
         let r = report(&doc, Format::PlantUml);
+        assert!(!r.export_supported);
+        assert_eq!(r.warnings[0].code, "format.unsupported_export");
+    }
+
+    #[test]
+    fn d2_export_flowchart_supported() {
+        let doc = ir::from_mermaid("graph TD\n  A-->B\n").unwrap();
+        let r = report(&doc, Format::D2);
+        assert!(r.export_supported);
+        assert!(r.lossless);
+    }
+
+    #[test]
+    fn d2_export_rejects_sequence_only() {
+        let doc = ir::from_mermaid("sequenceDiagram\n  A->>B: hi\n").unwrap();
+        let r = report(&doc, Format::D2);
         assert!(!r.export_supported);
         assert_eq!(r.warnings[0].code, "format.unsupported_export");
     }

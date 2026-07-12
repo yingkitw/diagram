@@ -11,7 +11,7 @@ A native Rust platform for **diagram rendering, generation, analysis, and interc
 
 **Why this vs Mermaid.js / PlantUML?** Single native binary, MCP-first agent workflows, analysis without a browser or JVM, and a format-agnostic core so you can keep existing Mermaid/PlantUML sources while moving toward a richer IR.
 
-**Formats today:** Mermaid (flowchart, sequence, class, gantt); native JSON IR; Graphviz DOT and PlantUML (sequence, class, activity) via adapters; SVG/PNG/PDF render output.
+**Formats today:** Mermaid (flowchart, sequence, class, gantt); native JSON IR; Graphviz DOT, D2, and PlantUML (sequence, class, activity) via adapters; SVG/PNG/PDF render output.
 
 ## Quick start
 
@@ -64,6 +64,7 @@ diagram mcp   # agent tools over stdio
 | PNG | Render export (`.png` via `diagram render`) | Stable |
 | PDF | Render export (`.pdf` via `diagram render`; raster embed) | Stable |
 | PlantUML (`.puml`) | Sequence + class + activity-shaped flowchart import/export | Expand syntax |
+| D2 (`.d2`) | Flowchart import + export (flat subset) | Expand syntax |
 | Graphviz DOT (`.dot`) | Flowchart import + export (digraph subset) | Expand subset |
 | Lossiness report | `diagram lossiness` / `export --report` / MCP | Expand per-format warnings |
 
@@ -90,6 +91,7 @@ Under `examples/`:
 | `simple-flowchart.mmd`, `shapes.mmd`, `subgraphs.mmd`, … | Mermaid flowchart |
 | `sequence.mmd`, `class.mmd`, `gantt.mmd` | Mermaid sequence / class / gantt |
 | `sequence.puml`, `class.puml`, `activity.puml` | PlantUML |
+| `simple-flowchart.d2` | D2 |
 | `simple-flowchart.dot` | Graphviz DOT |
 | `multi-document.json` | Multi-diagram JSON IR |
 | `doc-with-diagrams.md` | Markdown pipeline demo |
@@ -116,7 +118,7 @@ See the full tool table in `SPEC.md`.
 ## Architecture (target)
 
 ```
-Formats (Mermaid, PlantUML, DOT, …)  ──import──►  Canonical IR  ──export──►  Formats
+Formats (Mermaid, PlantUML, DOT, D2, …)  ──import──►  Canonical IR  ──export──►  Formats
                                                       │
                                           ┌───────────┼───────────┐
                                           ▼           ▼           ▼

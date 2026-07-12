@@ -4,7 +4,7 @@
 
 `diagram` is a Rust CLI and MCP **diagram platform**: render, generate, analyze, and interchange diagrams via a canonical **IR**, with **Compatibility** adapters for Mermaid, Graphviz DOT, PlantUML (sequence, class, activity), and more planned. See `CONTEXT.md` and `docs/adr/0001-canonical-ir-and-format-adapters.md`.
 
-**Current shipping surface:** Mermaid, JSON IR, DOT, PlantUML → `Document`; `import`/`export`/`lossiness`; info/render/preview (SVG/PNG/PDF); flowchart generate/edit; validate/diff/merge/metrics; markdown pipeline; multi-diagram documents.
+**Current shipping surface:** Mermaid, JSON IR, DOT, D2, PlantUML → `Document`; `import`/`export`/`lossiness`; info/render/preview (SVG/PNG/PDF); flowchart generate/edit; validate/diff/merge/metrics; markdown pipeline; multi-diagram documents.
 
 ## Canonical JSON IR (shipped)
 
@@ -40,9 +40,10 @@
 | `mermaid` / `mmd` | ✓ | ✓ | All kinds; multi-diagram uses `%% diagram N:` markers |
 | `json` / `ir` | ✓ | ✓ | Lossless native IR |
 | `dot` / `gv` | ✓ flowchart | ✓ flowchart | Digraph subset |
+| `d2` | ✓ flowchart | ✓ flowchart | Flat flowchart subset |
 | `plantuml` / `puml` | ✓ sequence, class, activity | ✓ sequence, class, activity-shaped flowchart | Activity imports as flowchart IR |
 
-Detection: content heuristics (`@startuml`, `digraph`, `{` JSON) plus path extension. Override with `--from` / `--to` on CLI or MCP.
+Detection: content heuristics (`@startuml`, `digraph`, `direction:`, `{` JSON) plus path extension. Override with `--from` / `--to` on CLI or MCP.
 
 ## Supported Mermaid Syntax (Compatibility)
 
@@ -93,6 +94,12 @@ Mermaid remains the primary authored Format. Syntax below is Compatibility cover
 - Import and export map to flowchart IR
 - Not yet: ports, HTML labels, full Graphviz attribute surface
 
+## D2 Compatibility (subset)
+
+- `direction`, node `label` / `shape`, connections `->` / `<-` / `--` / `<->`, edge labels, dashed edges via `style.stroke-dash`
+- Import and export map to flowchart IR (flat graphs; containers/subgraphs export as D2 blocks)
+- Not yet: sequence/class shapes, nested container import, themes, icons, layout engine options
+
 ## Lossiness reporting
 
 `lossiness` analyzes what IR semantics a target Format cannot represent before export:
@@ -100,6 +107,7 @@ Mermaid remains the primary authored Format. Syntax below is Compatibility cover
 - JSON IR: lossless
 - Mermaid: warns on `href`/`tooltip`, multi-diagram marker convention
 - DOT: flowchart only; warns on skipped kinds, styles/classDefs, href/tooltip
+- D2: flowchart only; warns on skipped kinds, styles/classDefs, href/tooltip, subgraph flattening
 - PlantUML export: sequence/class only; flowchart/gantt omitted
 
 Blocked exports return an error with the first warning message.
@@ -125,8 +133,8 @@ diagram <COMMAND>
 Commands:
   parse        Parse and print canonical JSON IR
   ir           Alias for parse (canonical JSON IR)
-  import       Import Mermaid/DOT/PlantUML/JSON → JSON IR file
-  export       Export IR → Mermaid, JSON, DOT, or PlantUML
+  import       Import Mermaid/DOT/D2/PlantUML/JSON → JSON IR file
+  export       Export IR → Mermaid, JSON, DOT, D2, or PlantUML
   lossiness    Report export fidelity / unsupported fields
   info         Show diagram summary
   render       Render as SVG, PNG, or PDF (use --output extension, --watch, --theme)
@@ -204,7 +212,7 @@ Canonical wrapper: `Document { version, diagrams: Vec<Diagram> }` where `Diagram
 
 ## Analyze: `diff` / `DocumentDiff`
 
-`diagram diff <left> <right>` and MCP `diff_diagram` load both paths via `ir::load_path` (Mermaid, JSON IR, DOT, PlantUML) and return:
+`diagram diff <left> <right>` and MCP `diff_diagram` load both paths via `ir::load_path` (Mermaid, JSON IR, DOT, D2, PlantUML) and return:
 
 ```json
 {

@@ -1,0 +1,18 @@
+# Simple decision flow (D2 flat flowchart subset)
+direction: down
+
+start: Start {
+  shape: oval
+}
+check: Is it working? {
+  shape: diamond
+}
+great: Great!
+debug: Debug
+end: End
+
+start -> check
+check -> great: Yes
+check -> debug: No
+debug -> check
+great -> end

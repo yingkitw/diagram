@@ -42,6 +42,11 @@ pub fn dot_scaffold() -> &'static str {
     "digraph G {\n    A [label=\"Start\"];\n    B [label=\"End\"];\n    A -> B;\n}\n"
 }
 
+/// Minimal D2 scaffold for flowcharts.
+pub fn d2_scaffold() -> &'static str {
+    "direction: down\nstart: Start\nend: End\nstart -> end\n"
+}
+
 /// Build a canonical Document from a kind scaffold.
 pub fn scaffold_document(kind: Kind) -> Result<Document, IrError> {
     ir::from_mermaid(mermaid_scaffold(kind))
@@ -70,6 +75,15 @@ pub fn write_scaffold(kind_str: &str, path: &str) -> Result<Kind, String> {
                 ));
             }
             std::fs::write(path, dot_scaffold())
+                .map_err(|e| format!("Failed to write '{path}': {e}"))?;
+        }
+        Format::D2 => {
+            if kind != Kind::Flowchart {
+                return Err(format!(
+                    "D2 scaffolds only support flowchart (got {kind})"
+                ));
+            }
+            std::fs::write(path, d2_scaffold())
                 .map_err(|e| format!("Failed to write '{path}': {e}"))?;
         }
         Format::PlantUml => {

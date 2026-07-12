@@ -120,6 +120,7 @@ fn lang_to_format(lang: &str, content: &str) -> Format {
         "mermaid" | "mmd" => Format::Mermaid,
         "plantuml" | "puml" => Format::PlantUml,
         "dot" | "graphviz" | "gv" => Format::Dot,
+        "d2" | "d2lang" => Format::D2,
         _ => formats::detect(content, None),
     }
 }

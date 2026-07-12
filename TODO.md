@@ -40,7 +40,8 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 
 ## Longer-term
 
-- [ ] D2 / Excalidraw / Kroki-adjacent adapters as demand warrants
+- [x] D2 adapter (flat flowchart import/export)
+- [ ] Excalidraw / Kroki-adjacent adapters as demand warrants
 - [ ] Vector PDF export (optional; raster PDF shipped)
 - [ ] State + ER kinds (IR + Mermaid Compatibility)
 - [ ] Sequence/class/gantt extras (notes, loops, interfaces, milestones, …)
@@ -58,4 +59,4 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 | Structural analysis API | Limited | Limited |
 | Docs CI without heavy runtimes | mmdc heavy | Docker/Java common |
 
-Prioritize next: D2 adapter or editor UX (VS Code) → new kinds (state/ER) → adapter depth (DOT/PlantUML subsets).
+Prioritize next: editor UX (VS Code) → new kinds (state/ER) → adapter depth (DOT/PlantUML/D2 subsets).

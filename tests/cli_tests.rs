@@ -443,6 +443,54 @@ fn test_cli_export_dot() {
 }
 
 #[test]
+fn test_cli_import_d2() {
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.d2");
+    let json_out = std::env::temp_dir().join(format!("diagram_d2_ir_{}.json", std::process::id()));
+    let (_, _, code) = run(&[
+        "import",
+        src.to_str().unwrap(),
+        "--output",
+        json_out.to_str().unwrap(),
+        "--from",
+        "d2",
+    ]);
+    assert_eq!(code, 0);
+    let body = std::fs::read_to_string(&json_out).unwrap();
+    assert!(body.contains("\"kind\": \"flowchart\""), "body: {body}");
+    let _ = std::fs::remove_file(&json_out);
+}
+
+#[test]
+fn test_cli_export_d2() {
+    use std::fs;
+    let src =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.d2");
+    let json_out = std::env::temp_dir().join(format!("diagram_d2_ir_{}.json", std::process::id()));
+    let d2_out = std::env::temp_dir().join(format!("diagram_d2_out_{}.d2", std::process::id()));
+    let (_, _, code) = run(&[
+        "import",
+        src.to_str().unwrap(),
+        "--output",
+        json_out.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0);
+    let (_, _, code) = run(&[
+        "export",
+        json_out.to_str().unwrap(),
+        "--output",
+        d2_out.to_str().unwrap(),
+        "--to",
+        "d2",
+    ]);
+    assert_eq!(code, 0);
+    let out = fs::read_to_string(&d2_out).unwrap();
+    assert!(out.contains("start"));
+    assert!(out.contains("Start"));
+    let _ = fs::remove_file(&json_out);
+    let _ = fs::remove_file(&d2_out);
+}
+
+#[test]
 fn test_cli_import_export_roundtrip() {
     use std::fs;
     let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.mmd");

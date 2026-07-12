@@ -472,6 +472,22 @@ fn test_dot_example_parse_and_render() {
 }
 
 #[test]
+fn test_d2_example_parse_and_render() {
+    let path = examples_dir().join("simple-flowchart.d2");
+    let doc = diagram::ir::load_path(path.to_str().unwrap()).unwrap();
+    let diagram = match doc.primary().unwrap() {
+        diagram::ir::Diagram::Flowchart(d) => d,
+        _ => panic!("expected flowchart"),
+    };
+    assert!(diagram.nodes.len() >= 5);
+    assert!(diagram.edges.len() >= 5);
+    let svg = diagram::preview::render_file(path.to_str().unwrap(), diagram::renderer::Theme::Dark)
+        .unwrap();
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("Start"));
+}
+
+#[test]
 fn test_multi_document_composite_render() {
     let path = examples_dir().join("multi-document.json");
     let doc = diagram::ir::load_path(path.to_str().unwrap()).unwrap();

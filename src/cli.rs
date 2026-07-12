@@ -19,7 +19,7 @@ pub enum Cli {
         path: String,
         #[arg(long, short, help = "Output JSON IR file")]
         output: String,
-        #[arg(long, help = "Source format: mermaid, json, dot, or plantuml (auto-detect if omitted)")]
+        #[arg(long, help = "Source format: mermaid, json, dot, d2, or plantuml (auto-detect if omitted)")]
         from: Option<String>,
     },
 
@@ -28,7 +28,7 @@ pub enum Cli {
         path: String,
         #[arg(long, short, help = "Output file path")]
         output: String,
-        #[arg(long, help = "Target format: mermaid, json, dot, or plantuml (auto-detect if omitted)")]
+        #[arg(long, help = "Target format: mermaid, json, dot, d2, or plantuml (auto-detect if omitted)")]
         to: Option<String>,
         #[arg(long, help = "Print lossiness summary after export")]
         report: bool,
@@ -37,7 +37,7 @@ pub enum Cli {
     #[command(about = "Report export lossiness (what IR fields a format cannot represent)")]
     Lossiness {
         path: String,
-        #[arg(long, help = "Target format: mermaid, json, dot, or plantuml (default: mermaid)")]
+        #[arg(long, help = "Target format: mermaid, json, dot, d2, or plantuml (default: mermaid)")]
         to: Option<String>,
     },
 
@@ -294,7 +294,7 @@ fn cmd_ir(path: &str) -> anyhow::Result<()> {
 
 fn parse_format(s: &str) -> anyhow::Result<crate::formats::Format> {
     crate::formats::Format::parse(s)
-        .ok_or_else(|| anyhow::anyhow!("Invalid format '{s}'. Use: mermaid, json, dot, plantuml"))
+        .ok_or_else(|| anyhow::anyhow!("Invalid format '{s}'. Use: mermaid, json, dot, d2, plantuml"))
 }
 
 fn cmd_import(path: &str, output: &str, from: Option<&str>) -> anyhow::Result<()> {

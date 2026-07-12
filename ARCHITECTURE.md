@@ -57,7 +57,7 @@ main.rs
 | Area | Responsibility | Status |
 |------|----------------|--------|
 | `ir` | Canonical `Document` / `Diagram` / `Kind`; JSON | Shipped |
-| `formats` | Mermaid, JSON IR, DOT, PlantUML (seq/class/activity) | Partial — expand subsets |
+| `formats` | Mermaid, JSON IR, DOT, D2, PlantUML (seq/class/activity) | Partial — expand subsets |
 | `render` | Kind-aware layout + SVG/PNG/PDF backends | Partial — PDF is raster |
 | `analyze` | Validate, diff, merge, metrics | Partial — diff + metrics shipped; merge flowchart-only |
 | `generate` | CLI/MCP mutations and templates | Partial — create + flowchart edit |
