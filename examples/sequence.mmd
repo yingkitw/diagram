@@ -5,7 +5,14 @@ sequenceDiagram
     Alice->>Bob: Hello Bob
     Note over Alice,Bob: handshake
     Bob-->>Alice: Hi Alice
-    Alice->>Alice: remember to ask
-    Alice->>Bob: How are you?
-    Note right of Bob: feeling good
-    Bob-->>Alice: Great thanks
+    loop retry
+        Alice->>Bob: How are you?
+        alt happy
+            Bob-->>Alice: Great thanks
+        else busy
+            Bob-->>Alice: later
+        end
+    end
+    opt farewell
+        Alice->>Bob: bye
+    end

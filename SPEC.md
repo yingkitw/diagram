@@ -58,17 +58,20 @@ Mermaid remains the primary authored Format. Syntax below is Compatibility cover
 - **Styling**: `style`, `classDef`, `class`, `linkStyle`
 - **Interactive SVG**: `href`, tooltip via click targets in render output
 
-### Sequence diagrams (MVP + notes)
+### Sequence diagrams (MVP + notes + fragments)
 
 - `sequenceDiagram`, participants, `->>` / `-->>` messages, self-messages (`A->>A`)
 - Notes: `Note left of X:`, `Note right of X:`, `Note over A,B:`
-- Not yet: loops, alt/opt, activations, parallel fragments
+- Fragments: `loop` / `alt` / `else` / `opt` … `end` (nested; SVG frames; PlantUML import/export)
+- Not yet: activations, parallel (`par`) fragments
 
-### Class diagrams (MVP + stereotypes)
+### Class diagrams (MVP + stereotypes + cardinality + generics + notes)
 
 - `classDiagram`, classes with members, relations (`<|--`, `*--`, `o--`, `-->`, `--`, `..>`, `..|>`)
 - Stereotypes: `class Foo <<interface>>` or body line `<<interface>>` (SVG «…»; PlantUML `interface`/`enum`/`abstract class`)
-- Not yet: generics, cardinality, notes
+- Cardinality: `A "1" --> "*" B` / `A --> "1..*" B` (SVG near endpoints; PlantUML roundtrip)
+- Generics: Mermaid `Stack~T~` / `List~List~int~~` (SVG `‹›`; PlantUML `Stack<T>` import/export)
+- Notes: `note for ClassName "text"` (SVG callout; PlantUML `note for` / `note left|right of`)
 
 ### Gantt charts (MVP + milestones)
 
@@ -95,11 +98,14 @@ Mermaid remains the primary authored Format. Syntax below is Compatibility cover
 
 - `@startuml` … `@enduml`, `participant` / `actor`, `->` / `-->` messages
 - Notes: one-liner `note left|right of Actor: text`, multiline `note …` / `end note`, and `note over A, B`
-- Export emits PlantUML note syntax from IR `Note` (roundtrip with Mermaid notes)
+- Fragments: `loop` / `alt` / `else` / `opt` … `end` (nested)
+- Export emits PlantUML note and fragment syntax from IR (roundtrip with Mermaid)
 
 ### Class
 
 - `class`, `interface`, `enum`, `abstract class`, members, relations (same tokens as Mermaid class)
+- Stereotypes and generics (`Stack<T>` ↔ Mermaid `Stack~T~`)
+- Cardinality quotes on relations; notes (`note for X : text`, `note left|right of X` / `end note`)
 
 ### Activity
 

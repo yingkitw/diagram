@@ -5,9 +5,15 @@ note left of Alice: ready to greet
 Alice -> Bob: Hello Bob
 note over Alice, Bob: handshake
 Bob --> Alice: Hi Alice
+loop retry
 Alice -> Bob: How are you?
-note right of Bob
-feeling good
-end note
+alt happy
 Bob --> Alice: Great thanks
+else busy
+Bob --> Alice: later
+end
+end
+opt farewell
+Alice -> Bob: bye
+end
 @enduml

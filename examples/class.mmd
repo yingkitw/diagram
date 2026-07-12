@@ -2,6 +2,10 @@ classDiagram
     class Drawable <<interface>> {
         +draw()
     }
+    class Stack~T~ {
+        +List~T~ items
+        +push(item) void
+    }
     class Animal {
         +String name
         +int age
@@ -12,7 +16,10 @@ classDiagram
         +draw()
     }
     class Cat
+    note for Animal "base living creature"
     Animal <|-- Dog : inherits
     Animal <|-- Cat
-    Animal --> Food : eats
+    Animal "1" --> "*" Food : eats
     Dog ..|> Drawable
+    Customer "1" --> "*" Order : places
+    Stack~T~ --> Object : stores

@@ -53,6 +53,57 @@ pub struct Note {
     pub text: String,
     /// Emit this note before `messages[before_message]` (or after all if == messages.len()).
     pub before_message: usize,
+    /// Open fragment count when parsed (0 = top-level). Used for roundtrip at boundaries.
+    #[serde(default)]
+    pub depth: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FragmentKind {
+    Loop,
+    Alt,
+    Opt,
+}
+
+impl FragmentKind {
+    pub(crate) fn mermaid_keyword(self) -> &'static str {
+        match self {
+            Self::Loop => "loop",
+            Self::Alt => "alt",
+            Self::Opt => "opt",
+        }
+    }
+
+    pub(crate) fn plantuml_keyword(self) -> &'static str {
+        self.mermaid_keyword()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FragmentSection {
+    pub label: String,
+    /// Inclusive message index where this section begins.
+    pub start_message: usize,
+}
+
+/// Combined fragment (`loop` / `alt` / `opt` … `end`) spanning a message range.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Fragment {
+    pub kind: FragmentKind,
+    /// First section is the header; further sections are `else` branches (`alt` only).
+    pub sections: Vec<FragmentSection>,
+    /// Exclusive end message index.
+    pub end_message: usize,
+}
+
+impl Fragment {
+    pub fn start_message(&self) -> usize {
+        self.sections
+            .first()
+            .map(|s| s.start_message)
+            .unwrap_or(self.end_message)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,6 +112,8 @@ pub struct SequenceDiagram {
     pub messages: Vec<Message>,
     #[serde(default)]
     pub notes: Vec<Note>,
+    #[serde(default)]
+    pub fragments: Vec<Fragment>,
 }
 
 #[derive(Debug, Clone)]
@@ -108,6 +161,8 @@ pub fn parse(source: &str) -> Result<SequenceDiagram, ParseError> {
     let mut labels: HashMap<String, String> = HashMap::new();
     let mut messages: Vec<Message> = Vec::new();
     let mut notes: Vec<Note> = Vec::new();
+    let mut fragments: Vec<Fragment> = Vec::new();
+    let mut open: Vec<(FragmentKind, Vec<FragmentSection>)> = Vec::new();
 
     for (line_num, text) in lines.iter().skip(1) {
         if let Some(rest) = text
@@ -122,7 +177,53 @@ pub fn parse(source: &str) -> Result<SequenceDiagram, ParseError> {
             continue;
         }
 
-        if let Some(note) = parse_note(text, messages.len()) {
+        if let Some((kind, label)) = parse_fragment_start(text) {
+            open.push((
+                kind,
+                vec![FragmentSection {
+                    label,
+                    start_message: messages.len(),
+                }],
+            ));
+            continue;
+        }
+
+        if let Some(label) = text.strip_prefix("else").map(str::trim) {
+            let Some((kind, sections)) = open.last_mut() else {
+                return Err(ParseError {
+                    message: "else without open fragment".into(),
+                    line: Some(*line_num),
+                });
+            };
+            if *kind != FragmentKind::Alt {
+                return Err(ParseError {
+                    message: "else is only valid inside alt".into(),
+                    line: Some(*line_num),
+                });
+            }
+            sections.push(FragmentSection {
+                label: label.to_string(),
+                start_message: messages.len(),
+            });
+            continue;
+        }
+
+        if *text == "end" {
+            let Some((kind, sections)) = open.pop() else {
+                return Err(ParseError {
+                    message: "end without open fragment".into(),
+                    line: Some(*line_num),
+                });
+            };
+            fragments.push(Fragment {
+                kind,
+                sections,
+                end_message: messages.len(),
+            });
+            continue;
+        }
+
+        if let Some(note) = parse_note(text, messages.len(), open.len()) {
             for a in &note.actors {
                 ensure_participant(&mut order, &mut labels, a);
             }
@@ -143,6 +244,13 @@ pub fn parse(source: &str) -> Result<SequenceDiagram, ParseError> {
         });
     }
 
+    if !open.is_empty() {
+        return Err(ParseError {
+            message: "unclosed fragment (expected end)".into(),
+            line: None,
+        });
+    }
+
     let participants = order
         .into_iter()
         .map(|id| {
@@ -155,7 +263,26 @@ pub fn parse(source: &str) -> Result<SequenceDiagram, ParseError> {
         participants,
         messages,
         notes,
+        fragments,
     })
+}
+
+fn parse_fragment_start(text: &str) -> Option<(FragmentKind, String)> {
+    for (prefix, kind) in [
+        ("loop", FragmentKind::Loop),
+        ("alt", FragmentKind::Alt),
+        ("opt", FragmentKind::Opt),
+    ] {
+        if text == prefix {
+            return Some((kind, String::new()));
+        }
+        if let Some(rest) = text.strip_prefix(prefix) {
+            if rest.starts_with(' ') || rest.is_empty() {
+                return Some((kind, rest.trim().to_string()));
+            }
+        }
+    }
+    None
 }
 
 fn ensure_participant(order: &mut Vec<String>, labels: &mut HashMap<String, String>, id: &str) {
@@ -197,7 +324,7 @@ fn parse_message(text: &str) -> Option<Message> {
     None
 }
 
-fn parse_note(text: &str, before_message: usize) -> Option<Note> {
+fn parse_note(text: &str, before_message: usize, depth: usize) -> Option<Note> {
     let rest = text.strip_prefix("Note ")?.trim_start();
     let (placement, rest) = if let Some(r) = rest.strip_prefix("left of ") {
         (NotePlacement::LeftOf, r)
@@ -225,6 +352,7 @@ fn parse_note(text: &str, before_message: usize) -> Option<Note> {
         actors,
         text: note_text.trim().to_string(),
         before_message,
+        depth,
     })
 }
 
@@ -238,22 +366,138 @@ impl SequenceDiagram {
                 out.push_str(&format!("    participant {}\n", p.id));
             }
         }
-        for i in 0..=self.messages.len() {
-            for n in self.notes.iter().filter(|n| n.before_message == i) {
-                out.push_str(&format!("    {}\n", note_mermaid(n)));
-            }
-            if let Some(m) = self.messages.get(i) {
-                out.push_str(&format!(
+        for event in self.timeline() {
+            match event {
+                TimelineEvent::FragStart { kind, label } => {
+                    if label.is_empty() {
+                        out.push_str(&format!("    {}\n", kind.mermaid_keyword()));
+                    } else {
+                        out.push_str(&format!("    {} {}\n", kind.mermaid_keyword(), label));
+                    }
+                }
+                TimelineEvent::FragElse { label } => {
+                    if label.is_empty() {
+                        out.push_str("    else\n");
+                    } else {
+                        out.push_str(&format!("    else {label}\n"));
+                    }
+                }
+                TimelineEvent::FragEnd => out.push_str("    end\n"),
+                TimelineEvent::Note(n) => out.push_str(&format!("    {}\n", note_mermaid(n))),
+                TimelineEvent::Message(m) => out.push_str(&format!(
                     "    {}{}{}: {}\n",
                     m.from,
                     m.arrow.mermaid_str(),
                     m.to,
                     m.text
-                ));
+                )),
             }
         }
         out
     }
+
+    /// Ordered emit stream for Mermaid/PlantUML/layout (fragments + notes + messages).
+    pub(crate) fn timeline(&self) -> Vec<TimelineEvent<'_>> {
+        let mut events = Vec::new();
+        let mut emitted = vec![false; self.notes.len()];
+        let mut stack: Vec<&Fragment> = Vec::new();
+
+        for i in 0..=self.messages.len() {
+            // Close non-empty fragments that end here (trailing notes first).
+            while stack
+                .last()
+                .is_some_and(|f| f.end_message == i && f.start_message() < i)
+            {
+                emit_notes_at(
+                    &mut events,
+                    &mut emitted,
+                    &self.notes,
+                    i,
+                    stack.len(),
+                );
+                events.push(TimelineEvent::FragEnd);
+                stack.pop();
+            }
+
+            // Top-level notes between fragments.
+            emit_notes_at(&mut events, &mut emitted, &self.notes, i, stack.len());
+
+            for f in self
+                .fragments
+                .iter()
+                .filter(|f| f.start_message() == i)
+            {
+                let label = f
+                    .sections
+                    .first()
+                    .map(|s| s.label.as_str())
+                    .unwrap_or("");
+                events.push(TimelineEvent::FragStart {
+                    kind: f.kind,
+                    label,
+                });
+                stack.push(f);
+            }
+
+            for f in stack.last().into_iter().flat_map(|f| f.sections.iter().skip(1)) {
+                if f.start_message == i {
+                    events.push(TimelineEvent::FragElse {
+                        label: f.label.as_str(),
+                    });
+                }
+            }
+
+            emit_notes_at(
+                &mut events,
+                &mut emitted,
+                &self.notes,
+                i,
+                stack.len(),
+            );
+
+            if let Some(m) = self.messages.get(i) {
+                events.push(TimelineEvent::Message(m));
+            }
+
+            // Empty fragments opened and closed at this index.
+            while stack.last().is_some_and(|f| f.end_message == i) {
+                emit_notes_at(
+                    &mut events,
+                    &mut emitted,
+                    &self.notes,
+                    i,
+                    stack.len(),
+                );
+                events.push(TimelineEvent::FragEnd);
+                stack.pop();
+            }
+        }
+        events
+    }
+}
+
+fn emit_notes_at<'a>(
+    events: &mut Vec<TimelineEvent<'a>>,
+    emitted: &mut [bool],
+    notes: &'a [Note],
+    before_message: usize,
+    depth: usize,
+) {
+    for (idx, n) in notes.iter().enumerate() {
+        if emitted[idx] || n.before_message != before_message || n.depth != depth {
+            continue;
+        }
+        emitted[idx] = true;
+        events.push(TimelineEvent::Note(n));
+    }
+}
+
+pub(crate) enum TimelineEvent<'a> {
+    FragStart { kind: FragmentKind, label: &'a str },
+    FragElse { label: &'a str },
+    FragEnd,
+    Note(&'a Note),
+    Message(&'a Message),
 }
 
 fn note_mermaid(n: &Note) -> String {
@@ -289,12 +533,24 @@ struct LaidNote {
     text: String,
 }
 
+struct LaidFragment {
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    kind: FragmentKind,
+    label: String,
+    else_dividers: Vec<(f64, String)>,
+    depth: usize,
+}
+
 struct SequenceLayout {
     width: f64,
     height: f64,
     participants: Vec<LaidParticipant>,
     messages: Vec<LaidMessage>,
     notes: Vec<LaidNote>,
+    fragments: Vec<LaidFragment>,
     header_bottom: f64,
     footer_top: f64,
 }
@@ -309,6 +565,8 @@ const TOP: f64 = 30.0;
 const NOTE_PAD: f64 = 8.0;
 const NOTE_CHAR_W: f64 = 7.0;
 const NOTE_LINE_H: f64 = 16.0;
+const FRAG_HEADER: f64 = 22.0;
+const FRAG_PAD: f64 = 10.0;
 
 fn layout(diagram: &SequenceDiagram) -> SequenceLayout {
     let n = diagram.participants.len().max(1);
@@ -324,39 +582,103 @@ fn layout(diagram: &SequenceDiagram) -> SequenceLayout {
         .collect();
 
     let x_of: HashMap<&str, f64> = participants.iter().map(|p| (p.id.as_str(), p.x)).collect();
+    let min_x = participants
+        .iter()
+        .map(|p| p.x)
+        .fold(f64::INFINITY, f64::min);
+    let max_x = participants
+        .iter()
+        .map(|p| p.x)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let base_frag_x = if participants.is_empty() {
+        MARGIN_X
+    } else {
+        min_x - BOX_W / 2.0 - FRAG_PAD
+    };
+    let base_frag_w = if participants.is_empty() {
+        200.0
+    } else {
+        (max_x - min_x) + BOX_W + FRAG_PAD * 2.0
+    };
 
     let header_bottom = TOP + BOX_H;
     let mut y = header_bottom + MSG_GAP;
     let mut messages = Vec::new();
     let mut notes = Vec::new();
+    let mut fragments = Vec::new();
 
-    for i in 0..=diagram.messages.len() {
-        for note in diagram.notes.iter().filter(|n| n.before_message == i) {
-            let (nx, nw) = note_x_w(note, &x_of);
-            let lines = wrap_note_lines(&note.text, 28);
-            let nh = NOTE_PAD * 2.0 + lines.len().max(1) as f64 * NOTE_LINE_H;
-            notes.push(LaidNote {
-                x: nx,
-                y,
-                w: nw,
-                h: nh,
-                text: lines.join("\n"),
-            });
-            y += nh + 12.0;
-        }
-        if let Some(m) = diagram.messages.get(i) {
-            let from_x = *x_of.get(m.from.as_str()).unwrap_or(&MARGIN_X);
-            let to_x = *x_of.get(m.to.as_str()).unwrap_or(&MARGIN_X);
-            let self_msg = m.from == m.to;
-            messages.push(LaidMessage {
-                from_x,
-                to_x,
-                y,
-                text: m.text.clone(),
-                arrow: m.arrow,
-                self_msg,
-            });
-            y += if self_msg { NOTE_GAP } else { MSG_GAP };
+    struct OpenFrame {
+        kind: FragmentKind,
+        label: String,
+        start_y: f64,
+        depth: usize,
+        else_dividers: Vec<(f64, String)>,
+    }
+    let mut open_frames: Vec<OpenFrame> = Vec::new();
+
+    for event in diagram.timeline() {
+        match event {
+            TimelineEvent::FragStart { kind, label } => {
+                let depth = open_frames.len();
+                open_frames.push(OpenFrame {
+                    kind,
+                    label: label.to_string(),
+                    start_y: y,
+                    depth,
+                    else_dividers: Vec::new(),
+                });
+                y += FRAG_HEADER + 6.0;
+            }
+            TimelineEvent::FragElse { label } => {
+                if let Some(frame) = open_frames.last_mut() {
+                    frame.else_dividers.push((y, label.to_string()));
+                }
+                y += FRAG_HEADER + 4.0;
+            }
+            TimelineEvent::FragEnd => {
+                if let Some(frame) = open_frames.pop() {
+                    let inset = frame.depth as f64 * 8.0;
+                    let bottom = y + 4.0;
+                    fragments.push(LaidFragment {
+                        x: base_frag_x + inset,
+                        y: frame.start_y,
+                        w: (base_frag_w - inset * 2.0).max(80.0),
+                        h: (bottom - frame.start_y).max(FRAG_HEADER + 8.0),
+                        kind: frame.kind,
+                        label: frame.label,
+                        else_dividers: frame.else_dividers,
+                        depth: frame.depth,
+                    });
+                    y = bottom + 4.0;
+                }
+            }
+            TimelineEvent::Note(note) => {
+                let (nx, nw) = note_x_w(note, &x_of);
+                let lines = wrap_note_lines(&note.text, 28);
+                let nh = NOTE_PAD * 2.0 + lines.len().max(1) as f64 * NOTE_LINE_H;
+                notes.push(LaidNote {
+                    x: nx,
+                    y,
+                    w: nw,
+                    h: nh,
+                    text: lines.join("\n"),
+                });
+                y += nh + 12.0;
+            }
+            TimelineEvent::Message(m) => {
+                let from_x = *x_of.get(m.from.as_str()).unwrap_or(&MARGIN_X);
+                let to_x = *x_of.get(m.to.as_str()).unwrap_or(&MARGIN_X);
+                let self_msg = m.from == m.to;
+                messages.push(LaidMessage {
+                    from_x,
+                    to_x,
+                    y,
+                    text: m.text.clone(),
+                    arrow: m.arrow,
+                    self_msg,
+                });
+                y += if self_msg { NOTE_GAP } else { MSG_GAP };
+            }
         }
     }
 
@@ -366,6 +688,9 @@ fn layout(diagram: &SequenceDiagram) -> SequenceLayout {
     for note in &notes {
         width = width.max(note.x + note.w + MARGIN_X);
     }
+    for f in &fragments {
+        width = width.max(f.x + f.w + MARGIN_X);
+    }
 
     SequenceLayout {
         width,
@@ -373,6 +698,7 @@ fn layout(diagram: &SequenceDiagram) -> SequenceLayout {
         participants,
         messages,
         notes,
+        fragments,
         header_bottom,
         footer_top,
     }
@@ -466,6 +792,18 @@ pub fn render_svg(diagram: &SequenceDiagram, theme: Theme) -> String {
         Theme::Dark => "#a3a34a",
         Theme::Light => "#ca8a04",
     };
+    let frag_stroke = match theme {
+        Theme::Dark => "#7dd3fc",
+        Theme::Light => "#0284c7",
+    };
+    let frag_fill = match theme {
+        Theme::Dark => "#0c4a6e55",
+        Theme::Light => "#e0f2fe88",
+    };
+    let frag_label = match theme {
+        Theme::Dark => "#bae6fd",
+        Theme::Light => "#0369a1",
+    };
 
     let mut svg = format!(
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">"##,
@@ -510,6 +848,62 @@ pub fn render_svg(diagram: &SequenceDiagram, theme: Theme) -> String {
             box_stroke,
             text_color,
         );
+    }
+
+    // Outer fragments first so nested frames paint on top.
+    let mut frags: Vec<&LaidFragment> = laid.fragments.iter().collect();
+    frags.sort_by_key(|f| f.depth);
+    for f in frags {
+        svg.push_str(&format!(
+            r##"<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="{fill}" stroke="{stroke}" stroke-dasharray="4,3"/>"##,
+            x = f.x,
+            y = f.y,
+            w = f.w,
+            h = f.h,
+            fill = frag_fill,
+            stroke = frag_stroke,
+        ));
+        let chip = f.kind.mermaid_keyword();
+        svg.push_str(&format!(
+            r##"<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="{stroke}"/>"##,
+            x = f.x,
+            y = f.y,
+            w = (chip.len() as f64 * 7.5 + 12.0).min(f.w),
+            h = FRAG_HEADER,
+            stroke = frag_stroke,
+        ));
+        svg.push_str(&format!(
+            r##"<text x="{x}" y="{y}" fill="{bg}" font-size="11" font-weight="600" font-family="sans-serif">{chip}</text>"##,
+            x = f.x + 6.0,
+            y = f.y + FRAG_HEADER * 0.72,
+            bg = bg,
+            chip = chip,
+        ));
+        if !f.label.is_empty() {
+            svg.push_str(&format!(
+                r##"<text x="{x}" y="{y}" fill="{c}" font-size="12" font-family="sans-serif">{t}</text>"##,
+                x = f.x + chip.len() as f64 * 7.5 + 18.0,
+                y = f.y + FRAG_HEADER * 0.72,
+                c = frag_label,
+                t = esc(&f.label),
+            ));
+        }
+        for (ey, elabel) in &f.else_dividers {
+            svg.push_str(&format!(
+                r##"<line x1="{x1}" y1="{y}" x2="{x2}" y2="{y}" stroke="{c}" stroke-dasharray="4,3"/>"##,
+                x1 = f.x,
+                x2 = f.x + f.w,
+                y = ey,
+                c = frag_stroke,
+            ));
+            svg.push_str(&format!(
+                r##"<text x="{x}" y="{y}" fill="{c}" font-size="11" font-family="sans-serif">else {t}</text>"##,
+                x = f.x + 8.0,
+                y = ey + FRAG_HEADER * 0.65,
+                c = frag_label,
+                t = esc(elabel),
+            ));
+        }
     }
 
     for n in &laid.notes {
@@ -699,5 +1093,48 @@ mod tests {
     fn is_sequence_detects() {
         assert!(is_sequence(SAMPLE));
         assert!(!is_sequence("graph TD\n  A-->B\n"));
+    }
+
+    #[test]
+    fn parse_loop_alt_opt() {
+        let src = r#"sequenceDiagram
+    participant A
+    participant B
+    loop Heartbeat
+        A->>B: ping
+        B-->>A: pong
+    end
+    alt success
+        A->>B: ok
+    else failure
+        A->>B: retry
+    end
+    opt Extra
+        A->>B: bonus
+    end
+"#;
+        let d = parse(src).unwrap();
+        assert_eq!(d.messages.len(), 5);
+        assert_eq!(d.fragments.len(), 3);
+        assert_eq!(d.fragments[0].kind, FragmentKind::Loop);
+        assert_eq!(d.fragments[0].sections[0].label, "Heartbeat");
+        assert_eq!(d.fragments[0].start_message(), 0);
+        assert_eq!(d.fragments[0].end_message, 2);
+        assert_eq!(d.fragments[1].kind, FragmentKind::Alt);
+        assert_eq!(d.fragments[1].sections.len(), 2);
+        assert_eq!(d.fragments[1].sections[1].label, "failure");
+        assert_eq!(d.fragments[1].sections[1].start_message, 3);
+        assert_eq!(d.fragments[2].kind, FragmentKind::Opt);
+        let out = d.to_mermaid();
+        assert!(out.contains("loop Heartbeat"));
+        assert!(out.contains("else failure"));
+        assert!(out.contains("opt Extra"));
+        let d2 = parse(&out).unwrap();
+        assert_eq!(d2.fragments.len(), 3);
+        assert_eq!(d2.messages.len(), 5);
+        let svg = render_svg(&d, Theme::Dark);
+        assert!(svg.contains("loop"));
+        assert!(svg.contains("Heartbeat"));
+        assert!(svg.contains("else failure"));
     }
 }

@@ -61,12 +61,27 @@ pub struct Relation {
     pub to: String,
     pub kind: RelationKind,
     pub label: String,
+    /// Cardinality on the `from` side (e.g. `"1"`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_card: Option<String>,
+    /// Cardinality on the `to` side (e.g. `"*"` / `"1..*"`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_card: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClassNote {
+    /// Class id this note is attached to.
+    pub target: String,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClassDiagram {
     pub classes: Vec<Class>,
     pub relations: Vec<Relation>,
+    #[serde(default)]
+    pub notes: Vec<ClassNote>,
 }
 
 #[derive(Debug, Clone)]
@@ -112,6 +127,7 @@ pub fn parse(source: &str) -> Result<ClassDiagram, ParseError> {
     let mut classes: HashMap<String, Class> = HashMap::new();
     let mut order: Vec<String> = Vec::new();
     let mut relations: Vec<Relation> = Vec::new();
+    let mut notes: Vec<ClassNote> = Vec::new();
 
     let mut i = 1;
     while i < raw.len() {
@@ -173,6 +189,13 @@ pub fn parse(source: &str) -> Result<ClassDiagram, ParseError> {
             }
         }
 
+        if let Some(note) = parse_class_note(text) {
+            ensure_class(&mut classes, &mut order, &note.target);
+            notes.push(note);
+            i += 1;
+            continue;
+        }
+
         // `Animal : +String name` (not a relation label)
         if let Some((left, right)) = text.split_once(" : ") {
             let id = left.trim();
@@ -181,7 +204,7 @@ pub fn parse(source: &str) -> Result<ClassDiagram, ParseError> {
                 && !member.is_empty()
                 && id
                     .chars()
-                    .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+                    .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '~')
             {
                 ensure_class(&mut classes, &mut order, id);
                 classes.get_mut(id).unwrap().members.push(ClassMember {
@@ -211,7 +234,54 @@ pub fn parse(source: &str) -> Result<ClassDiagram, ParseError> {
         .filter_map(|id| classes.remove(&id))
         .collect();
 
-    Ok(ClassDiagram { classes, relations })
+    Ok(ClassDiagram {
+        classes,
+        relations,
+        notes,
+    })
+}
+
+/// `note for Animal "text"`
+fn parse_class_note(text: &str) -> Option<ClassNote> {
+    let rest = text.strip_prefix("note for ")?.trim_start();
+    let (target, after) = split_note_target(rest)?;
+    let text = parse_quoted_note_text(after)?;
+    if target.is_empty() || text.is_empty() {
+        return None;
+    }
+    Some(ClassNote { target, text })
+}
+
+fn split_note_target(s: &str) -> Option<(String, &str)> {
+    let s = s.trim_start();
+    if s.starts_with('"') {
+        return None;
+    }
+    // Target ends before the opening quote of the note body.
+    let quote = s.find('"')?;
+    let target = s[..quote].trim().to_string();
+    Some((target, s[quote..].trim_start()))
+}
+
+fn parse_quoted_note_text(s: &str) -> Option<String> {
+    let s = s.trim();
+    if !s.starts_with('"') {
+        return None;
+    }
+    let mut out = String::new();
+    let mut chars = s[1..].chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => {
+                if let Some(n) = chars.next() {
+                    out.push(n);
+                }
+            }
+            '"' => return Some(out),
+            other => out.push(other),
+        }
+    }
+    None
 }
 
 pub(crate) fn ensure_class(classes: &mut HashMap<String, Class>, order: &mut Vec<String>, id: &str) {
@@ -285,6 +355,85 @@ fn stereotype_only(s: &str) -> Option<String> {
     }
 }
 
+/// Render Mermaid `~T~` generics as `‹T›` (supports nesting like `List~List~int~~`).
+pub(crate) fn display_generics(s: &str) -> String {
+    replace_tilde_pairs(s, "‹", "›")
+}
+
+/// Mermaid `~T~` → PlantUML/angle `\<T\>`.
+pub(crate) fn generics_to_angle(s: &str) -> String {
+    replace_tilde_pairs(s, "<", ">")
+}
+
+/// PlantUML `\<T\>` → Mermaid `~T~` (does not touch `<<stereotypes>>`).
+pub(crate) fn angle_generics_to_tilde(s: &str) -> String {
+    let mut chars: Vec<char> = s.chars().collect();
+    loop {
+        // Prefer innermost (rightmost simple `\<...\>` pair). Skip `<<stereotypes>>`.
+        let mut found: Option<(usize, usize)> = None;
+        let mut i = 0;
+        while i < chars.len() {
+            if chars[i] == '<' {
+                if i + 1 < chars.len() && chars[i + 1] == '<' {
+                    // Skip stereotype `<<...>>`
+                    if let Some(end) = chars[i + 2..]
+                        .windows(2)
+                        .position(|w| w == ['>', '>'])
+                    {
+                        i += 2 + end + 2;
+                        continue;
+                    }
+                    i += 2;
+                    continue;
+                }
+                if let Some(j) = (i + 1..chars.len()).find(|&j| chars[j] == '>') {
+                    let inner = &chars[i + 1..j];
+                    if !inner.is_empty() && !inner.contains(&'<') && !inner.contains(&'>') {
+                        found = Some((i, j));
+                    }
+                }
+            }
+            i += 1;
+        }
+        let Some((i, j)) = found else {
+            break;
+        };
+        let inner: String = chars[i + 1..j].iter().collect();
+        let replacement: Vec<char> = format!("~{inner}~").chars().collect();
+        chars.splice(i..=j, replacement);
+    }
+    chars.into_iter().collect()
+}
+
+fn replace_tilde_pairs(s: &str, open: &str, close: &str) -> String {
+    let mut chars: Vec<char> = s.chars().collect();
+    loop {
+        // Prefer innermost non-empty pair (rightmost `~…~` with no nested `~`)
+        // so `List~List~int~~` → `List‹List‹int››`.
+        let mut found: Option<(usize, usize)> = None;
+        let mut i = 0;
+        while i < chars.len() {
+            if chars[i] == '~' {
+                if let Some(j) = (i + 1..chars.len()).find(|&j| chars[j] == '~') {
+                    if j > i + 1 && !chars[i + 1..j].contains(&'~') {
+                        found = Some((i, j));
+                    }
+                    i = j;
+                    continue;
+                }
+            }
+            i += 1;
+        }
+        let Some((i, j)) = found else {
+            break;
+        };
+        let inner: String = chars[i + 1..j].iter().collect();
+        let replacement: Vec<char> = format!("{open}{inner}{close}").chars().collect();
+        chars.splice(i..=j, replacement);
+    }
+    chars.into_iter().collect()
+}
+
 pub(crate) fn parse_relation_line(text: &str) -> Option<Relation> {
     // Longest tokens first.
     let kinds = [
@@ -298,11 +447,12 @@ pub(crate) fn parse_relation_line(text: &str) -> Option<Relation> {
     ];
     for (token, kind) in kinds {
         if let Some((left, right)) = text.split_once(token) {
-            let from = left.trim().to_string();
-            let (to, label) = match right.split_once(':') {
-                Some((to, lab)) => (to.trim().to_string(), lab.trim().to_string()),
-                None => (right.trim().to_string(), String::new()),
+            let (to_raw, label) = match right.split_once(':') {
+                Some((to, lab)) => (to.trim(), lab.trim().to_string()),
+                None => (right.trim(), String::new()),
             };
+            let (from, from_card) = parse_left_endpoint(left.trim());
+            let (to, to_card) = parse_right_endpoint(to_raw);
             if from.is_empty() || to.is_empty() {
                 return None;
             }
@@ -311,10 +461,73 @@ pub(crate) fn parse_relation_line(text: &str) -> Option<Relation> {
                 to,
                 kind,
                 label,
+                from_card,
+                to_card,
             });
         }
     }
     None
+}
+
+/// `Customer "1"` → (`Customer`, Some(`1`))
+pub(crate) fn parse_left_endpoint(s: &str) -> (String, Option<String>) {
+    let s = s.trim();
+    if let Some((id, card)) = split_trailing_quoted(s) {
+        return (id, Some(card));
+    }
+    (s.to_string(), None)
+}
+
+/// `"*" Ticket` or `Ticket` → id + optional card
+pub(crate) fn parse_right_endpoint(s: &str) -> (String, Option<String>) {
+    let s = s.trim();
+    if let Some((card, id)) = split_leading_quoted(s) {
+        return (id, Some(card));
+    }
+    (s.to_string(), None)
+}
+
+fn split_trailing_quoted(s: &str) -> Option<(String, String)> {
+    let s = s.trim();
+    if !s.ends_with('"') {
+        return None;
+    }
+    let inner_end = s.len() - 1;
+    let start = s[..inner_end].rfind('"')?;
+    let id = s[..start].trim();
+    let card = s[start + 1..inner_end].trim();
+    if id.is_empty() {
+        return None;
+    }
+    Some((id.to_string(), card.to_string()))
+}
+
+fn split_leading_quoted(s: &str) -> Option<(String, String)> {
+    let s = s.trim();
+    if !s.starts_with('"') {
+        return None;
+    }
+    let end = s[1..].find('"')? + 1;
+    let card = s[1..end].trim().to_string();
+    let id = s[end + 1..].trim();
+    if id.is_empty() {
+        return None;
+    }
+    Some((card, id.to_string()))
+}
+
+fn format_card(card: &Option<String>) -> String {
+    match card {
+        Some(c) => format!(" \"{c}\""),
+        None => String::new(),
+    }
+}
+
+fn format_right_card(card: &Option<String>) -> String {
+    match card {
+        Some(c) => format!("\"{c}\" "),
+        None => String::new(),
+    }
 }
 
 impl ClassDiagram {
@@ -337,22 +550,31 @@ impl ClassDiagram {
             }
         }
         for r in &self.relations {
+            let left = format!("{}{}", r.from, format_card(&r.from_card));
+            let right = format!("{}{}", format_right_card(&r.to_card), r.to);
             if r.label.is_empty() {
                 out.push_str(&format!(
                     "    {} {} {}\n",
-                    r.from,
+                    left,
                     r.kind.mermaid_str(),
-                    r.to
+                    right
                 ));
             } else {
                 out.push_str(&format!(
                     "    {} {} {} : {}\n",
-                    r.from,
+                    left,
                     r.kind.mermaid_str(),
-                    r.to,
+                    right,
                     r.label
                 ));
             }
+        }
+        for n in &self.notes {
+            out.push_str(&format!(
+                "    note for {} \"{}\"\n",
+                n.target,
+                n.text.replace('\\', "\\\\").replace('"', "\\\"")
+            ));
         }
         out
     }
@@ -375,6 +597,19 @@ struct LaidRelation {
     y2: f64,
     kind: RelationKind,
     label: String,
+    from_card: Option<String>,
+    to_card: Option<String>,
+}
+
+struct LaidNote {
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    text: String,
+    /// Attachment point on the target class (right-center).
+    ax: f64,
+    ay: f64,
 }
 
 struct ClassLayout {
@@ -382,6 +617,7 @@ struct ClassLayout {
     height: f64,
     classes: Vec<LaidClass>,
     relations: Vec<LaidRelation>,
+    notes: Vec<LaidNote>,
 }
 
 const BOX_MIN_W: f64 = 120.0;
@@ -393,12 +629,13 @@ const V_GAP: f64 = 70.0;
 const MARGIN: f64 = 40.0;
 
 fn class_size(c: &Class) -> (f64, f64) {
-    let mut max_chars = c.id.len();
+    let title = display_generics(&c.id);
+    let mut max_chars = title.chars().count();
     if let Some(s) = &c.stereotype {
         max_chars = max_chars.max(s.len() + 4); // «…»
     }
     for m in &c.members {
-        max_chars = max_chars.max(m.text.len());
+        max_chars = max_chars.max(display_generics(&m.text).chars().count());
     }
     let w = (max_chars as f64 * CHAR_W + PAD * 2.0).max(BOX_MIN_W);
     let header_lines = 1 + usize::from(c.stereotype.is_some());
@@ -517,15 +754,70 @@ fn layout(diagram: &ClassDiagram) -> ClassLayout {
             y2: by,
             kind: r.kind,
             label: r.label.clone(),
+            from_card: r.from_card.clone(),
+            to_card: r.to_card.clone(),
         });
     }
 
+    let mut laid_notes = Vec::new();
+    let mut note_bottom = y - V_GAP + MARGIN;
+    let mut note_right = max_w;
+    for (ni, note) in diagram.notes.iter().enumerate() {
+        let Some(&(cx, cy, cw, ch)) = positions.get(&note.target) else {
+            continue;
+        };
+        let lines = wrap_note_lines(&note.text, 28);
+        let nw = (lines
+            .iter()
+            .map(|l| l.chars().count())
+            .max()
+            .unwrap_or(8) as f64
+            * CHAR_W
+            + PAD * 2.0)
+            .max(80.0);
+        let nh = PAD * 2.0 + lines.len().max(1) as f64 * LINE_H;
+        let nx = cx + cw + 24.0;
+        let ny = cy + (ni as f64) * 8.0;
+        laid_notes.push(LaidNote {
+            x: nx,
+            y: ny,
+            w: nw,
+            h: nh,
+            text: lines.join("\n"),
+            ax: cx + cw,
+            ay: cy + ch / 2.0,
+        });
+        note_right = note_right.max(nx + nw + MARGIN);
+        note_bottom = note_bottom.max(ny + nh + MARGIN);
+    }
+
     ClassLayout {
-        width: max_w.max(MARGIN * 2.0),
-        height: y - V_GAP + MARGIN,
+        width: max_w.max(note_right).max(MARGIN * 2.0),
+        height: (y - V_GAP + MARGIN).max(note_bottom),
         classes: laid_classes,
         relations: laid_relations,
+        notes: laid_notes,
     }
+}
+
+fn wrap_note_lines(text: &str, width: usize) -> Vec<String> {
+    if text.len() <= width {
+        return vec![text.to_string()];
+    }
+    let mut lines = Vec::new();
+    let mut rest = text;
+    while rest.len() > width {
+        let split = rest[..width]
+            .rfind(' ')
+            .filter(|&i| i > width / 3)
+            .unwrap_or(width);
+        lines.push(rest[..split].trim().to_string());
+        rest = rest[split..].trim_start();
+    }
+    if !rest.is_empty() {
+        lines.push(rest.to_string());
+    }
+    lines
 }
 
 fn esc(s: &str) -> String {
@@ -560,6 +852,14 @@ pub fn render_svg(diagram: &ClassDiagram, theme: Theme) -> String {
     let line = match theme {
         Theme::Dark => "#64748b",
         Theme::Light => "#94a3b8",
+    };
+    let note_fill = match theme {
+        Theme::Dark => "#3f3f1f",
+        Theme::Light => "#fef9c3",
+    };
+    let note_stroke = match theme {
+        Theme::Dark => "#a3a34a",
+        Theme::Light => "#ca8a04",
     };
 
     let mut svg = format!(
@@ -626,6 +926,29 @@ pub fn render_svg(diagram: &ClassDiagram, theme: Theme) -> String {
                 t = esc(&r.label),
             ));
         }
+        let dx = r.x2 - r.x1;
+        let dy = r.y2 - r.y1;
+        let len = (dx * dx + dy * dy).sqrt().max(1.0);
+        let ox = -dy / len * 10.0;
+        let oy = dx / len * 10.0;
+        if let Some(card) = &r.from_card {
+            svg.push_str(&format!(
+                r##"<text x="{x}" y="{y}" text-anchor="middle" fill="{c}" font-size="11" font-family="sans-serif">{t}</text>"##,
+                x = r.x1 + dx * 0.18 + ox,
+                y = r.y1 + dy * 0.18 + oy,
+                c = muted,
+                t = esc(card),
+            ));
+        }
+        if let Some(card) = &r.to_card {
+            svg.push_str(&format!(
+                r##"<text x="{x}" y="{y}" text-anchor="middle" fill="{c}" font-size="11" font-family="sans-serif">{t}</text>"##,
+                x = r.x1 + dx * 0.82 + ox,
+                y = r.y1 + dy * 0.82 + oy,
+                c = muted,
+                t = esc(card),
+            ));
+        }
     }
 
     for c in &laid.classes {
@@ -644,7 +967,7 @@ pub fn render_svg(diagram: &ClassDiagram, theme: Theme) -> String {
             x = c.x + c.w / 2.0,
             y = title_y,
             c = text_color,
-            t = esc(&c.id),
+            t = esc(&display_generics(&c.id)),
         ));
         let mut header_bottom = PAD + LINE_H;
         if let Some(stereo) = &c.stereotype {
@@ -673,8 +996,39 @@ pub fn render_svg(diagram: &ClassDiagram, theme: Theme) -> String {
                 x = c.x + PAD,
                 y = my,
                 c = muted,
-                t = esc(m),
+                t = esc(&display_generics(m)),
             ));
+        }
+    }
+
+    for n in &laid.notes {
+        svg.push_str(&format!(
+            r##"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{c}" stroke-dasharray="4,3"/>"##,
+            x1 = n.ax,
+            y1 = n.ay,
+            x2 = n.x,
+            y2 = n.y + n.h / 2.0,
+            c = note_stroke,
+        ));
+        svg.push_str(&format!(
+            r##"<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="4" fill="{fill}" stroke="{stroke}"/>"##,
+            x = n.x,
+            y = n.y,
+            w = n.w,
+            h = n.h,
+            fill = note_fill,
+            stroke = note_stroke,
+        ));
+        let mut ty = n.y + PAD + LINE_H * 0.75;
+        for line in n.text.lines() {
+            svg.push_str(&format!(
+                r##"<text x="{x}" y="{y}" fill="{c}" font-size="12" font-family="sans-serif">{t}</text>"##,
+                x = n.x + PAD,
+                y = ty,
+                c = text_color,
+                t = esc(line),
+            ));
+            ty += LINE_H;
         }
     }
 
@@ -771,5 +1125,80 @@ mod tests {
         );
         let svg = render_svg(&d, Theme::Dark);
         assert!(svg.contains("«interface»"));
+    }
+
+    #[test]
+    fn parse_cardinality() {
+        let src = r#"classDiagram
+    Customer "1" --> "*" Order : places
+    Student "1" --> "1..*" Course
+"#;
+        let d = parse(src).unwrap();
+        assert_eq!(d.relations.len(), 2);
+        assert_eq!(d.relations[0].from, "Customer");
+        assert_eq!(d.relations[0].to, "Order");
+        assert_eq!(d.relations[0].from_card.as_deref(), Some("1"));
+        assert_eq!(d.relations[0].to_card.as_deref(), Some("*"));
+        assert_eq!(d.relations[0].label, "places");
+        assert_eq!(d.relations[1].to_card.as_deref(), Some("1..*"));
+        let out = d.to_mermaid();
+        assert!(out.contains("\"1\""));
+        assert!(out.contains("\"*\""));
+        let d2 = parse(&out).unwrap();
+        assert_eq!(d2.relations[0].from_card, d.relations[0].from_card);
+        assert_eq!(d2.relations[0].to_card, d.relations[0].to_card);
+        let svg = render_svg(&d, Theme::Light);
+        assert!(svg.contains("1..*") || svg.contains("*"));
+    }
+
+    #[test]
+    fn parse_generics() {
+        let src = r#"classDiagram
+    class Stack~T~ {
+        +List~T~ items
+        +push(item~T~) void
+    }
+    class List~List~int~~
+    Stack~T~ --> List~T~ : stores
+"#;
+        let d = parse(src).unwrap();
+        let stack = d.classes.iter().find(|c| c.id == "Stack~T~").unwrap();
+        assert_eq!(stack.members[0].text, "+List~T~ items");
+        assert!(d.classes.iter().any(|c| c.id == "List~List~int~~"));
+        assert_eq!(d.relations[0].from, "Stack~T~");
+        assert_eq!(display_generics("Stack~T~"), "Stack‹T›");
+        assert_eq!(display_generics("List~List~int~~"), "List‹List‹int››");
+        assert_eq!(generics_to_angle("Stack~T~"), "Stack<T>");
+        assert_eq!(angle_generics_to_tilde("Stack<T>"), "Stack~T~");
+        assert_eq!(
+            angle_generics_to_tilde("List<List<int>>"),
+            "List~List~int~~"
+        );
+        let out = d.to_mermaid();
+        assert!(out.contains("Stack~T~"));
+        let d2 = parse(&out).unwrap();
+        assert!(d2.classes.iter().any(|c| c.id == "Stack~T~"));
+        let svg = render_svg(&d, Theme::Dark);
+        assert!(svg.contains("Stack‹T›") || svg.contains("‹T›"));
+    }
+
+    #[test]
+    fn parse_notes() {
+        let src = r#"classDiagram
+    class Animal
+    note for Animal "represents living creatures"
+    Animal --> Food
+"#;
+        let d = parse(src).unwrap();
+        assert_eq!(d.notes.len(), 1);
+        assert_eq!(d.notes[0].target, "Animal");
+        assert_eq!(d.notes[0].text, "represents living creatures");
+        let out = d.to_mermaid();
+        assert!(out.contains("note for Animal"));
+        let d2 = parse(&out).unwrap();
+        assert_eq!(d2.notes.len(), 1);
+        assert_eq!(d2.notes[0].text, d.notes[0].text);
+        let svg = render_svg(&d, Theme::Light);
+        assert!(svg.contains("represents living creatures"));
     }
 }

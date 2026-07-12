@@ -69,6 +69,7 @@ pub struct SequenceMetrics {
     pub dashed_messages: usize,
     pub notes: usize,
     pub self_messages: usize,
+    pub fragments: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -76,6 +77,7 @@ pub struct ClassMetrics {
     pub classes: usize,
     pub relations: usize,
     pub members: usize,
+    pub notes: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -294,6 +296,7 @@ fn sequence_metrics(s: &crate::sequence::SequenceDiagram) -> SequenceMetrics {
         dashed_messages: s.messages.len() - solid,
         notes: s.notes.len(),
         self_messages,
+        fragments: s.fragments.len(),
     }
 }
 
@@ -302,6 +305,7 @@ fn class_metrics(c: &crate::class::ClassDiagram) -> ClassMetrics {
         classes: c.classes.len(),
         relations: c.relations.len(),
         members: c.classes.iter().map(|cl| cl.members.len()).sum(),
+        notes: c.notes.len(),
     }
 }
 
@@ -393,6 +397,8 @@ pub struct SequenceDiff {
     pub modified_messages: Vec<(crate::sequence::Message, crate::sequence::Message)>,
     pub added_notes: usize,
     pub removed_notes: usize,
+    pub added_fragments: usize,
+    pub removed_fragments: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -401,6 +407,8 @@ pub struct ClassDiff {
     pub removed_classes: Vec<String>,
     pub added_relations: Vec<crate::class::Relation>,
     pub removed_relations: Vec<crate::class::Relation>,
+    pub added_notes: usize,
+    pub removed_notes: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -602,6 +610,8 @@ fn diff_sequence(
         modified_messages,
         added_notes: right.notes.len().saturating_sub(left.notes.len()),
         removed_notes: left.notes.len().saturating_sub(right.notes.len()),
+        added_fragments: right.fragments.len().saturating_sub(left.fragments.len()),
+        removed_fragments: left.fragments.len().saturating_sub(right.fragments.len()),
     }
 }
 
@@ -617,6 +627,8 @@ fn sequence_unchanged(d: &SequenceDiff) -> bool {
         && d.modified_messages.is_empty()
         && d.added_notes == 0
         && d.removed_notes == 0
+        && d.added_fragments == 0
+        && d.removed_fragments == 0
 }
 
 fn diff_class(
@@ -664,6 +676,8 @@ fn diff_class(
         removed_classes,
         added_relations,
         removed_relations,
+        added_notes: right.notes.len().saturating_sub(left.notes.len()),
+        removed_notes: left.notes.len().saturating_sub(right.notes.len()),
     }
 }
 
@@ -672,6 +686,8 @@ fn class_unchanged(d: &ClassDiff) -> bool {
         && d.removed_classes.is_empty()
         && d.added_relations.is_empty()
         && d.removed_relations.is_empty()
+        && d.added_notes == 0
+        && d.removed_notes == 0
 }
 
 fn diff_gantt(
