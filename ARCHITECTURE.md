@@ -40,6 +40,7 @@ main.rs
   ├── class.rs     — Mermaid class → class IR → SVG
   ├── gantt.rs     — Mermaid gantt → gantt IR → SVG
   ├── state.rs     — Mermaid state → state IR → SVG
+  ├── er.rs        — Mermaid ER → ER IR → SVG
   ├── ir.rs        — canonical Document / Diagram / Kind
   ├── formats/     — detect, import, export
   │     ├── mermaid.rs

@@ -32,6 +32,7 @@ pub enum MetricsDetail {
     Class(ClassMetrics),
     Gantt(GanttMetrics),
     State(StateMetrics),
+    Er(ErMetrics),
     Empty {},
 }
 
@@ -94,6 +95,13 @@ pub struct StateMetrics {
     pub choice_nodes: usize,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ErMetrics {
+    pub entities: usize,
+    pub relationships: usize,
+    pub attributes: usize,
+}
+
 pub fn metrics(doc: &Document) -> DocumentMetrics {
     if doc.diagrams.is_empty() {
         return DocumentMetrics {
@@ -140,6 +148,7 @@ fn metrics_for_diagram(d: &Diagram) -> MetricsDetail {
         Diagram::Class(c) => MetricsDetail::Class(class_metrics(c)),
         Diagram::Gantt(g) => MetricsDetail::Gantt(gantt_metrics(g)),
         Diagram::State(s) => MetricsDetail::State(state_metrics(s)),
+        Diagram::Er(e) => MetricsDetail::Er(er_metrics(e)),
     }
 }
 
@@ -327,6 +336,14 @@ fn state_metrics(s: &crate::state::StateDiagram) -> StateMetrics {
     }
 }
 
+fn er_metrics(e: &crate::er::ErDiagram) -> ErMetrics {
+    ErMetrics {
+        entities: e.entities.len(),
+        relationships: e.relationships.len(),
+        attributes: e.entities.iter().map(|ent| ent.attributes.len()).sum(),
+    }
+}
+
 // --- Semantic diff (IR-level) ---
 
 #[derive(Debug, Clone, Serialize)]
@@ -359,6 +376,7 @@ pub enum DiffDetail {
     Class(ClassDiff),
     Gantt(GanttDiff),
     State(StateDiff),
+    Er(ErDiff),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -391,6 +409,14 @@ pub struct StateDiff {
     pub removed_states: Vec<String>,
     pub added_transitions: Vec<crate::state::Transition>,
     pub removed_transitions: Vec<crate::state::Transition>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ErDiff {
+    pub added_entities: Vec<String>,
+    pub removed_entities: Vec<String>,
+    pub added_relationships: Vec<crate::er::Relationship>,
+    pub removed_relationships: Vec<crate::er::Relationship>,
 }
 
 /// Structural diff of two Documents (any supported kind, by diagram index).
@@ -494,6 +520,11 @@ fn diff_diagram_pair(
             let d = diff_state(l, r);
             let unchanged = state_unchanged(&d);
             (Some(DiffDetail::State(d)), unchanged)
+        }
+        (Diagram::Er(l), Diagram::Er(r)) => {
+            let d = diff_er(l, r);
+            let unchanged = er_unchanged(&d);
+            (Some(DiffDetail::Er(d)), unchanged)
         }
         _ => unreachable!("kinds matched above"),
     };
@@ -727,6 +758,60 @@ fn state_unchanged(d: &StateDiff) -> bool {
         && d.removed_transitions.is_empty()
 }
 
+fn diff_er(left: &crate::er::ErDiagram, right: &crate::er::ErDiagram) -> ErDiff {
+    let left_ids: HashSet<&str> = left.entities.iter().map(|e| e.id.as_str()).collect();
+    let right_ids: HashSet<&str> = right.entities.iter().map(|e| e.id.as_str()).collect();
+
+    let added_entities: Vec<String> = right
+        .entities
+        .iter()
+        .filter(|e| !left_ids.contains(e.id.as_str()))
+        .map(|e| e.id.clone())
+        .collect();
+    let removed_entities: Vec<String> = left
+        .entities
+        .iter()
+        .filter(|e| !right_ids.contains(e.id.as_str()))
+        .map(|e| e.id.clone())
+        .collect();
+
+    let rel_key = |r: &crate::er::Relationship| {
+        format!(
+            "{}|{}|{:?}|{:?}|{}|{}",
+            r.from, r.to, r.from_card, r.to_card, r.identifying, r.label
+        )
+    };
+    let left_r: HashSet<String> = left.relationships.iter().map(rel_key).collect();
+    let right_r: HashSet<String> = right.relationships.iter().map(rel_key).collect();
+
+    let added_relationships: Vec<crate::er::Relationship> = right
+        .relationships
+        .iter()
+        .filter(|r| !left_r.contains(&rel_key(r)))
+        .cloned()
+        .collect();
+    let removed_relationships: Vec<crate::er::Relationship> = left
+        .relationships
+        .iter()
+        .filter(|r| !right_r.contains(&rel_key(r)))
+        .cloned()
+        .collect();
+
+    ErDiff {
+        added_entities,
+        removed_entities,
+        added_relationships,
+        removed_relationships,
+    }
+}
+
+fn er_unchanged(d: &ErDiff) -> bool {
+    d.added_entities.is_empty()
+        && d.removed_entities.is_empty()
+        && d.added_relationships.is_empty()
+        && d.removed_relationships.is_empty()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -844,6 +929,20 @@ mod tests {
         assert!(s.states >= 2);
         assert_eq!(s.transitions, 2);
         assert!(s.start_end_nodes >= 1);
+    }
+
+    #[test]
+    fn er_metrics_counts() {
+        let doc = ir::from_mermaid(
+            "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n  CUSTOMER {\n    string name PK\n  }\n",
+        )
+        .unwrap();
+        let MetricsDetail::Er(e) = metrics(&doc).detail else {
+            panic!("expected er metrics");
+        };
+        assert_eq!(e.entities, 2);
+        assert_eq!(e.relationships, 1);
+        assert_eq!(e.attributes, 1);
     }
 
     #[test]

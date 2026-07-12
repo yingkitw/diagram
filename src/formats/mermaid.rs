@@ -20,6 +20,10 @@ pub fn parse(source: &str) -> Result<Diagram, IrError> {
         Ok(Diagram::State(
             crate::state::parse(source).map_err(|e| e.to_string())?,
         ))
+    } else if crate::er::is_er(source) {
+        Ok(Diagram::Er(
+            crate::er::parse(source).map_err(|e| e.to_string())?,
+        ))
     } else {
         Ok(Diagram::Flowchart(
             crate::parser::parse(source).map_err(|e| e.to_string())?,
@@ -92,5 +96,11 @@ mod tests {
     fn parse_state_kind() {
         let d = parse("stateDiagram-v2\n  [*] --> A\n").unwrap();
         assert_eq!(d.kind(), Kind::State);
+    }
+
+    #[test]
+    fn parse_er_kind() {
+        let d = parse("erDiagram\n  A ||--o{ B : has\n").unwrap();
+        assert_eq!(d.kind(), Kind::Er);
     }
 }

@@ -16,7 +16,7 @@ struct FilePath {
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct CreateParams {
-    #[schemars(description = "Diagram kind: flowchart, sequence, class, gantt, or state")]
+    #[schemars(description = "Diagram kind: flowchart, sequence, class, gantt, state, or er")]
     kind: String,
     #[schemars(description = "Output file path (.mmd or .json)")]
     output: String,
@@ -357,7 +357,7 @@ impl DiagramServer {
         }
     }
 
-    #[tool(description = "Render diagram as SVG (flowchart, sequence, class, gantt, or state)")]
+    #[tool(description = "Render diagram as SVG (flowchart, sequence, class, gantt, state, or er)")]
     async fn render_svg(&self, Parameters(params): Parameters<RenderParams>) -> CallToolResult {
         let theme = match params.theme.as_deref() {
             Some("light") => renderer::Theme::Light,

@@ -11,8 +11,9 @@ pub fn parse_kind(s: &str) -> Result<Kind, String> {
         "class" | "classdiagram" => Ok(Kind::Class),
         "gantt" => Ok(Kind::Gantt),
         "state" | "statediagram" => Ok(Kind::State),
+        "er" | "erdiagram" => Ok(Kind::Er),
         _ => Err(format!(
-            "unknown kind '{s}'; expected flowchart, sequence, class, gantt, or state"
+            "unknown kind '{s}'; expected flowchart, sequence, class, gantt, state, or er"
         )),
     }
 }
@@ -32,6 +33,9 @@ pub fn mermaid_scaffold(kind: Kind) -> &'static str {
         }
         Kind::State => {
             "stateDiagram-v2\n    [*] --> Idle\n    Idle --> [*]\n"
+        }
+        Kind::Er => {
+            "erDiagram\n    CUSTOMER ||--o{ ORDER : places\n    CUSTOMER {\n        string name\n        string custNumber PK\n    }\n    ORDER {\n        int orderNumber PK\n    }\n"
         }
     }
 }
@@ -115,6 +119,7 @@ mod tests {
             Kind::Class,
             Kind::Gantt,
             Kind::State,
+            Kind::Er,
         ] {
             let doc = scaffold_document(kind).unwrap();
             assert_eq!(doc.primary().unwrap().kind(), kind);

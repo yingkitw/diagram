@@ -79,6 +79,13 @@ Mermaid remains the primary authored Format. Syntax below is Compatibility cover
 - `state "label" as id`, `state id <<choice>>` / `<<fork>>` / `<<join>>`
 - Not yet: composite/nested states, notes, concurrency regions
 
+### ER diagrams (MVP)
+
+- `erDiagram`, entity attribute blocks (`type name` with optional `PK`/`FK`/`UK`)
+- Relationships with cardinalities (`||`, `|o`, `}o`, `}|`, `o|`, `o{`, `|{`) and `--` / `..`
+- Optional relationship labels (`: places`)
+- Not yet: aliases, comments on attributes, crow's foot SVG glyphs beyond text cardinality
+
 ## PlantUML Compatibility (subset)
 
 ### Sequence

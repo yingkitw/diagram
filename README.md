@@ -31,7 +31,7 @@
 | **Generate** | scaffold flowchart/sequence/class/gantt, cli edit nodes and edges |
 | **Agents** | model context protocol, stdio mcp, claude desktop, cursor |
 
-**Diagram kinds:** flowchart, sequence diagram, class diagram, gantt chart, state diagram.
+**Diagram kinds:** flowchart, sequence diagram, class diagram, gantt chart, state diagram, ER diagram.
 
 **Why choose this over Mermaid.js / PlantUML?** Single native binary, MCP-first agent workflows, structural analysis on a canonical IR, and multi-format interchange — not a Mermaid-only clone.
 
@@ -83,7 +83,7 @@ diagram mcp   # agent tools over stdio
 
 | Format | Extensions | Import | Export | Notes |
 |--------|------------|--------|--------|-------|
-| **Mermaid** | `.mmd`, `.mermaid` | ✓ | ✓ | Flowchart, sequence, class, gantt, state |
+| **Mermaid** | `.mmd`, `.mermaid` | ✓ | ✓ | Flowchart, sequence, class, gantt, state, er |
 | **JSON IR** | `.json` | ✓ | ✓ | Canonical, lossless interchange |
 | **PlantUML** | `.puml`, `.plantuml` | ✓ | ✓ | Sequence, class, activity → flowchart |
 | **Graphviz DOT** | `.dot`, `.gv` | ✓ | ✓ | Digraph subset ↔ flowchart |
@@ -99,7 +99,7 @@ Use `diagram lossiness` before export to see what IR semantics a target format c
 ```bash
 diagram parse | ir | import | export | lossiness
 diagram info | render | preview | validate | metrics | diff | merge
-diagram create --kind flowchart|sequence|class|gantt|state
+diagram create --kind flowchart|sequence|class|gantt|state|er
 diagram markdown
 diagram add-node | remove-node | update-node | add-edge | remove-edge | update-edge ...
 diagram get-node | get-edge | list-nodes | list-edges | get-mermaid | set-mermaid ...
@@ -115,7 +115,7 @@ Under `examples/`:
 | File | Kind / format |
 |------|----------------|
 | `simple-flowchart.mmd`, `shapes.mmd`, `subgraphs.mmd`, … | Mermaid flowchart |
-| `sequence.mmd`, `class.mmd`, `gantt.mmd`, `state.mmd` | Mermaid sequence / class / gantt / state |
+| `sequence.mmd`, `class.mmd`, `gantt.mmd`, `state.mmd`, `er.mmd` | Mermaid sequence / class / gantt / state / er |
 | `sequence.puml`, `class.puml`, `activity.puml` | PlantUML |
 | `simple-flowchart.d2` | D2 |
 | `simple-flowchart.dot` | Graphviz DOT |

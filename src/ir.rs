@@ -2,6 +2,7 @@
 
 use crate::class::{self, ClassDiagram};
 use crate::diagram as flowchart;
+use crate::er::{self, ErDiagram};
 use crate::gantt::{self, GanttDiagram};
 use crate::layout;
 use crate::renderer::{self, Theme};
@@ -19,6 +20,7 @@ pub enum Kind {
     Class,
     Gantt,
     State,
+    Er,
 }
 
 impl fmt::Display for Kind {
@@ -29,6 +31,7 @@ impl fmt::Display for Kind {
             Self::Class => write!(f, "class"),
             Self::Gantt => write!(f, "gantt"),
             Self::State => write!(f, "state"),
+            Self::Er => write!(f, "er"),
         }
     }
 }
@@ -42,6 +45,7 @@ pub enum Diagram {
     Class(ClassDiagram),
     Gantt(GanttDiagram),
     State(StateDiagram),
+    Er(ErDiagram),
 }
 
 impl Diagram {
@@ -52,6 +56,7 @@ impl Diagram {
             Self::Class(_) => Kind::Class,
             Self::Gantt(_) => Kind::Gantt,
             Self::State(_) => Kind::State,
+            Self::Er(_) => Kind::Er,
         }
     }
 
@@ -62,6 +67,7 @@ impl Diagram {
             Self::Class(d) => d.to_mermaid(),
             Self::Gantt(d) => d.to_mermaid(),
             Self::State(d) => d.to_mermaid(),
+            Self::Er(d) => d.to_mermaid(),
         }
     }
 
@@ -75,6 +81,7 @@ impl Diagram {
             Self::Class(d) => class::render_svg(d, theme),
             Self::Gantt(d) => gantt::render_svg(d, theme),
             Self::State(d) => state::render_svg(d, theme),
+            Self::Er(d) => er::render_svg(d, theme),
         }
     }
 }
@@ -215,6 +222,10 @@ fn diagram_summary_lines(d: &Diagram) -> Vec<String> {
             format!("States: {}", s.states.len()),
             format!("Transitions: {}", s.transitions.len()),
         ],
+        Diagram::Er(e) => vec![
+            format!("Entities: {}", e.entities.len()),
+            format!("Relationships: {}", e.relationships.len()),
+        ],
     }
 }
 
@@ -299,6 +310,11 @@ fn diagram_info_json(d: &Diagram) -> serde_json::Value {
             "kind": "state",
             "states": s.states.len(),
             "transitions": s.transitions.len(),
+        }),
+        Diagram::Er(e) => serde_json::json!({
+            "kind": "er",
+            "entities": e.entities.len(),
+            "relationships": e.relationships.len(),
         }),
     }
 }

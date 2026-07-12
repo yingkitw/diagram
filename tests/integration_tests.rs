@@ -121,6 +121,16 @@ fn test_all_examples_roundtrip() {
                     "transition count mismatch for {:?}",
                     path
                 );
+            } else if diagram::er::is_er(&source) {
+                let diagram = diagram::er::parse(&source).unwrap();
+                let output = diagram.to_mermaid();
+                let reparsed = diagram::er::parse(&output).unwrap();
+                assert_eq!(
+                    diagram.relationships.len(),
+                    reparsed.relationships.len(),
+                    "relationship count mismatch for {:?}",
+                    path
+                );
             } else {
                 let diagram = diagram::parser::parse(&source).unwrap();
                 let output = diagram.to_mermaid();
@@ -491,6 +501,19 @@ fn test_state_example_parse_and_render() {
     let svg = diagram::state::render_svg(&diagram, diagram::renderer::Theme::Dark);
     assert!(svg.contains("<svg"));
     assert!(svg.contains("Still"));
+}
+
+#[test]
+fn test_er_example_parse_and_render() {
+    let path = examples_dir().join("er.mmd");
+    let source = fs::read_to_string(&path).unwrap();
+    assert!(diagram::er::is_er(&source));
+    let diagram = diagram::er::parse(&source).unwrap();
+    assert!(diagram.entities.len() >= 3);
+    assert!(diagram.relationships.len() >= 2);
+    let svg = diagram::er::render_svg(&diagram, diagram::renderer::Theme::Dark);
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("CUSTOMER"));
 }
 
 #[test]

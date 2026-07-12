@@ -3,6 +3,7 @@ pub mod class;
 pub mod cli;
 pub mod composite;
 pub mod diagram;
+pub mod er;
 pub mod formats;
 pub mod gantt;
 pub mod generate;
