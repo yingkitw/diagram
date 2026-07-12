@@ -29,7 +29,7 @@ A bidirectional (or unidirectional) bridge between a Format and the IR.
 _Avoid_: Plugin (reserved for renderer/shape extensions), converter (too vague)
 
 **Render**:
-Produce a visual artifact (SVG, PNG, or raster PDF) from the IR.
+Produce a visual artifact (SVG, PNG, or vector PDF) from the IR.
 _Avoid_: Draw, compile (unless talking about layout)
 
 **Generate**:

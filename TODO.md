@@ -33,7 +33,7 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 - [x] PlantUML adapter (sequence, class, activity import/export)
 - [x] Graphviz DOT import + export (digraph subset) ↔ flowchart IR
 - [x] PNG export (resvg; `.png` output via `diagram render`)
-- [x] PDF export (resvg + printpdf; `.pdf` output via `diagram render`)
+- [x] PDF export (`.pdf` via `diagram render`; vector via svg2pdf)
 - [x] Multi-diagram Document (several kinds / figures per file)
 - [x] Markdown pipeline: extract fenced blocks → render → rewrite links
 - [x] Lossiness report on export (what could not be represented)
@@ -42,7 +42,7 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 
 - [x] D2 adapter (flat flowchart import/export)
 - [ ] Excalidraw / Kroki-adjacent adapters as demand warrants
-- [ ] Vector PDF export (optional; raster PDF shipped)
+- [x] Vector PDF export (svg2pdf; replaces prior raster embed)
 - [x] State + ER kinds (IR + Mermaid Compatibility)
 - [x] VS Code extension (preview / validate / render via CLI)
 - [x] Sequence extras: notes (`left of` / `right of` / `over`) + self-messages
@@ -67,7 +67,7 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 | Structural analysis API | Limited | Limited |
 | Docs CI without heavy runtimes | mmdc heavy | Docker/Java common |
 
-Prioritize next: Wasm embed / vector PDF; further DOT/D2 attribute surface as needed.
+Prioritize next: Wasm embed; further DOT/D2 attribute surface as needed.
 
 ## Audit follow-ups (done)
 

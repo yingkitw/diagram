@@ -91,7 +91,7 @@ diagram mcp   # agent tools over stdio
 | **D2** | `.d2` | ✓ | ✓ | Flat flowchart subset |
 | **SVG** | `.svg` | — | ✓ | Primary render output |
 | **PNG** | `.png` | — | ✓ | Raster via resvg |
-| **PDF** | `.pdf` | — | ✓ | Raster embed via printpdf |
+| **PDF** | `.pdf` | — | ✓ | Vector via svg2pdf |
 
 Use `diagram lossiness` before export to see what IR semantics a target format cannot represent.
 

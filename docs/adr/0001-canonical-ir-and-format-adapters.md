@@ -10,6 +10,6 @@ We reposition `diagram` as a **diagram platform** (render, generate, analyze, in
 
 **Consequences (as of v0.1.x):**
 
-- **Shipped:** `Document` / `Diagram` / `Kind` JSON IR; `import`/`export` CLI/MCP; lossiness reports; Mermaid behind `formats::mermaid`; DOT and PlantUML adapters (partial); render to SVG/PNG/PDF (raster); multi-diagram documents; markdown pipeline; analysis metrics.
+- **Shipped:** `Document` / `Diagram` / `Kind` JSON IR; `import`/`export` CLI/MCP; lossiness reports; Mermaid behind `formats::mermaid`; DOT and PlantUML adapters (partial); render to SVG/PNG/vector PDF; multi-diagram documents; markdown pipeline; analysis metrics.
 - **Ongoing:** Expand adapter subsets (PlantUML / DOT / D2); sequence extras; optional formats (Excalidraw) and Wasm as demand warrants. VS Code extension ships as a thin CLI client under `editors/vscode/`.
 - **Rule:** New features that cross format boundaries go through IR + adapters, not Mermaid-only code paths.

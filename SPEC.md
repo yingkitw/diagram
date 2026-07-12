@@ -29,7 +29,7 @@
 | Import | `Format` bytes → `Document` IR (`import`, `import_diagram`) |
 | Export | `Document` IR → `Format` bytes (`export`, `export_diagram`) |
 | Lossiness | Export fidelity report per target Format (`lossiness`, `export --report`, `lossiness_report`) |
-| Render | `Document` / `Diagram` → SVG, PNG, or PDF (raster) |
+| Render | `Document` / `Diagram` → SVG, PNG, or vector PDF |
 | Analyze | `Document` → validation issues, diff, metrics JSON |
 | Generate | MCP/CLI mutations and scaffolds against IR |
 
@@ -40,7 +40,7 @@
 | `mermaid` / `mmd` | ✓ | ✓ | All kinds; multi-diagram uses `%% diagram N:` markers |
 | `json` / `ir` | ✓ | ✓ | Lossless native IR |
 | `dot` / `gv` | ✓ flowchart | ✓ flowchart | Digraph subset |
-| `d2` | ✓ flowchart | ✓ flowchart | Flat flowchart subset |
+| `d2` | ✓ flowchart | ✓ flowchart | Containers as subgraphs |
 | `plantuml` / `puml` | ✓ sequence, class, activity | ✓ sequence, class, activity-shaped flowchart | Activity imports as flowchart IR |
 
 Detection: content heuristics (`@startuml`, `digraph`, `direction:`, `{` JSON) plus path extension. Override with `--from` / `--to` on CLI or MCP.
@@ -314,11 +314,12 @@ Settings: `diagram.cliPath`, `diagram.theme`, `diagram.autoPreviewOnSave`.
 ## Rendering
 
 1. Kind-specific IR → layout (flowchart: layered BFS) → SVG
-2. Optional raster: SVG → pixmap (resvg) → PNG or PDF (printpdf embed)
+2. Optional PNG: SVG → pixmap (resvg)
+3. Optional PDF: SVG → usvg tree → vector PDF (svg2pdf)
 
 **Flowchart SVG features:** themes, subgraphs, bezier edges, styles/classDef, linkStyle, href/tooltip.
 
-**PDF note:** raster embed at 96 DPI (not vector PDF).
+**PDF note:** vector paths/content streams via svg2pdf (not a raster embed).
 
 ## MCP Resources & Prompts
 

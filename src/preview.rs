@@ -2,14 +2,14 @@
 
 use crate::renderer::Theme;
 
-/// Raster output format selected by file extension hint.
+/// Binary export format selected by file extension (`.png` raster, `.pdf` vector).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RasterFormat {
     Png,
     Pdf,
 }
 
-/// Detect raster format from an output path (`.png` or `.pdf`).
+/// Detect PNG/PDF export format from an output path.
 pub fn raster_format_from_path(path: &str) -> Option<RasterFormat> {
     if crate::pdf::output_is_pdf(path) {
         Some(RasterFormat::Pdf)
@@ -74,7 +74,7 @@ pub fn write_render_outputs_to_dir(
     Ok(paths)
 }
 
-/// Write rendered output to a path (`.png`/`.pdf` → raster, otherwise SVG).
+/// Write rendered output to a path (`.png` → raster, `.pdf` → vector PDF, otherwise SVG).
 pub fn write_render_output(path: &str, diagram_path: &str, theme: Theme) -> Result<(), String> {
     let svg = render_file(diagram_path, theme)?;
     if let Some(fmt) = raster_format_from_path(path) {

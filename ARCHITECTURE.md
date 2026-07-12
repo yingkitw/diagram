@@ -30,7 +30,7 @@ main.rs
   ├── mcp.rs       — MCP tools (stdio)
   ├── preview.rs   — localhost live SVG preview; render to SVG/PNG/PDF
   ├── png.rs       — SVG → PNG via resvg
-  ├── pdf.rs       — SVG → PDF via resvg + printpdf (raster embed)
+  ├── pdf.rs       — SVG → vector PDF via svg2pdf (usvg)
   ├── lossiness.rs — export fidelity reports per Format
   ├── composite.rs — multi-diagram vertical SVG composite
   ├── markdown.rs  — fenced block extract → render → rewrite links
@@ -61,7 +61,7 @@ main.rs
 |------|----------------|--------|
 | `ir` | Canonical `Document` / `Diagram` / `Kind`; JSON | Shipped |
 | `formats` | Mermaid, JSON IR, DOT, D2, PlantUML (seq/class/activity) | Partial — D2 containers + DOT colors/URL; expand further as needed |
-| `render` | Kind-aware layout + SVG/PNG/PDF backends | Partial — PDF is raster |
+| `render` | Kind-aware layout + SVG/PNG/PDF backends | Shipped — PDF is vector (svg2pdf) |
 | `analyze` | Validate, diff, merge, metrics | Partial — diff + metrics shipped; merge flowchart-only |
 | `generate` | CLI/MCP mutations and templates | Partial — create + flowchart edit |
 | `lossiness` | Export fidelity warnings per Format | Shipped v1 |
@@ -105,9 +105,9 @@ Mutating tools read a path, modify, write back — stateless server, durable fil
 
 BFS layers from sources; four directions via axis swap. No dagre.js dependency.
 
-### Raster PDF
+### Vector PDF
 
-SVG → resvg pixmap → RGB (+ optional alpha mask) → single-page PDF via printpdf. Not vector PDF.
+SVG → usvg tree → svg2pdf path/content streams → single-page PDF. Filters (if any) may rasterize locally; typical diagram SVGs stay vector.
 
 ### Preview server
 
