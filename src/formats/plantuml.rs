@@ -235,12 +235,23 @@ fn export_sequence(s: &SequenceDiagram) -> String {
             out.push_str(&format!("participant {}\n", p.id));
         }
     }
-    for m in &s.messages {
-        let arrow = match m.arrow {
-            MessageArrow::Solid => "->",
-            MessageArrow::Dashed => "-->",
-        };
-        out.push_str(&format!("{} {} {}: {}\n", m.from, arrow, m.to, m.text));
+    for i in 0..=s.messages.len() {
+        for n in s.notes.iter().filter(|n| n.before_message == i) {
+            let actors = n.actors.join(",");
+            let place = match n.placement {
+                crate::sequence::NotePlacement::LeftOf => format!("note left of {actors}"),
+                crate::sequence::NotePlacement::RightOf => format!("note right of {actors}"),
+                crate::sequence::NotePlacement::Over => format!("note over {actors}"),
+            };
+            out.push_str(&format!("{place}\n{}\nend note\n", n.text));
+        }
+        if let Some(m) = s.messages.get(i) {
+            let arrow = match m.arrow {
+                MessageArrow::Solid => "->",
+                MessageArrow::Dashed => "-->",
+            };
+            out.push_str(&format!("{} {} {}: {}\n", m.from, arrow, m.to, m.text));
+        }
     }
     out.push_str("@enduml\n");
     out
@@ -249,10 +260,22 @@ fn export_sequence(s: &SequenceDiagram) -> String {
 fn export_class(c: &ClassDiagram) -> String {
     let mut out = String::from("@startuml\n");
     for cls in &c.classes {
+        let keyword = match cls.stereotype.as_deref() {
+            Some("interface") => "interface",
+            Some("enum") | Some("enumeration") => "enum",
+            Some("abstract") => "abstract class",
+            _ => "class",
+        };
+        let angle = match cls.stereotype.as_deref() {
+            Some("interface") | Some("enum") | Some("enumeration") | Some("abstract") | None => {
+                String::new()
+            }
+            Some(s) => format!(" <<{s}>>"),
+        };
         if cls.members.is_empty() {
-            out.push_str(&format!("class {}\n", cls.id));
+            out.push_str(&format!("{keyword} {}{angle}\n", cls.id));
         } else {
-            out.push_str(&format!("class {} {{\n", cls.id));
+            out.push_str(&format!("{keyword} {}{angle} {{\n", cls.id));
             for m in &cls.members {
                 out.push_str(&format!("  {}\n", m.text));
             }
@@ -575,9 +598,16 @@ fn parse_sequence(source: &str) -> Result<SequenceDiagram, IrError> {
     let mut order: Vec<String> = Vec::new();
     let mut labels: HashMap<String, String> = HashMap::new();
     let mut messages: Vec<Message> = Vec::new();
+    let mut notes: Vec<crate::sequence::Note> = Vec::new();
 
-    for (line_num, text) in source.lines().enumerate() {
-        let line = text.trim();
+    let lines: Vec<(usize, &str)> = source
+        .lines()
+        .enumerate()
+        .map(|(i, l)| (i + 1, l.trim()))
+        .collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let (line_num, line) = lines[i];
         if line.is_empty()
             || line.starts_with('@')
             || line.starts_with('\'')
@@ -585,6 +615,7 @@ fn parse_sequence(source: &str) -> Result<SequenceDiagram, IrError> {
             || line.starts_with("autonumber")
             || line.starts_with("title ")
         {
+            i += 1;
             continue;
         }
 
@@ -597,6 +628,16 @@ fn parse_sequence(source: &str) -> Result<SequenceDiagram, IrError> {
                 order.push(id.clone());
             }
             labels.insert(id, label);
+            i += 1;
+            continue;
+        }
+
+        if let Some((note, next)) = parse_plantuml_note(&lines, i, messages.len())? {
+            for a in &note.actors {
+                ensure_participant(&mut order, &mut labels, a);
+            }
+            notes.push(note);
+            i = next;
             continue;
         }
 
@@ -604,6 +645,7 @@ fn parse_sequence(source: &str) -> Result<SequenceDiagram, IrError> {
             ensure_participant(&mut order, &mut labels, &msg.from);
             ensure_participant(&mut order, &mut labels, &msg.to);
             messages.push(msg);
+            i += 1;
             continue;
         }
 
@@ -627,7 +669,98 @@ fn parse_sequence(source: &str) -> Result<SequenceDiagram, IrError> {
     Ok(SequenceDiagram {
         participants,
         messages,
+        notes,
     })
+}
+
+/// Parse `note left of X: text`, `note over A,B: text`, or multi-line `note …` / `end note`.
+fn parse_plantuml_note(
+    lines: &[(usize, &str)],
+    start: usize,
+    before_message: usize,
+) -> Result<Option<(crate::sequence::Note, usize)>, IrError> {
+    let (line_num, line) = lines[start];
+    let rest = match line.strip_prefix("note ").or_else(|| line.strip_prefix("Note ")) {
+        Some(r) => r.trim_start(),
+        None => return Ok(None),
+    };
+
+    let (placement, rest) = if let Some(r) = rest.strip_prefix("left of ") {
+        (crate::sequence::NotePlacement::LeftOf, r)
+    } else if let Some(r) = rest.strip_prefix("right of ") {
+        (crate::sequence::NotePlacement::RightOf, r)
+    } else if let Some(r) = rest.strip_prefix("over ") {
+        (crate::sequence::NotePlacement::Over, r)
+    } else {
+        return Err(IrError::from(format!(
+            "PlantUML sequence line {line_num}: expected note left/right of or note over"
+        )));
+    };
+
+    // One-liner: note left of Alice: text
+    if let Some((actors_part, text)) = rest.split_once(':') {
+        let actors = parse_note_actors(actors_part);
+        if actors.is_empty() {
+            return Err(IrError::from(format!(
+                "PlantUML sequence line {line_num}: note missing actor"
+            )));
+        }
+        return Ok(Some((
+            crate::sequence::Note {
+                placement,
+                actors,
+                text: text.trim().to_string(),
+                before_message,
+            },
+            start + 1,
+        )));
+    }
+
+    // Multi-line: note left of Alice\n...\nend note
+    let actors = parse_note_actors(rest);
+    if actors.is_empty() {
+        return Err(IrError::from(format!(
+            "PlantUML sequence line {line_num}: note missing actor"
+        )));
+    }
+    let mut body = Vec::new();
+    let mut i = start + 1;
+    while i < lines.len() {
+        let (_, t) = lines[i];
+        if t.eq_ignore_ascii_case("end note") {
+            return Ok(Some((
+                crate::sequence::Note {
+                    placement,
+                    actors,
+                    text: body.join(" "),
+                    before_message,
+                },
+                i + 1,
+            )));
+        }
+        if !t.is_empty() && !t.starts_with('\'') {
+            body.push(t.to_string());
+        }
+        i += 1;
+    }
+    Err(IrError::from(format!(
+        "PlantUML sequence line {line_num}: unclosed note (expected end note)"
+    )))
+}
+
+fn parse_note_actors(s: &str) -> Vec<String> {
+    s.split(',')
+        .map(|a| {
+            let a = a.trim();
+            if (a.starts_with('"') && a.ends_with('"')) || (a.starts_with('\'') && a.ends_with('\''))
+            {
+                a[1..a.len() - 1].to_string()
+            } else {
+                a.to_string()
+            }
+        })
+        .filter(|a| !a.is_empty())
+        .collect()
 }
 
 fn ensure_participant(order: &mut Vec<String>, labels: &mut HashMap<String, String>, id: &str) {
@@ -738,8 +871,9 @@ fn parse_class(source: &str) -> Result<ClassDiagram, IrError> {
             continue;
         }
 
-        if let Some((id, body_start)) = parse_entity_decl(line) {
+        if let Some((id, stereotype, body_start)) = parse_entity_decl(line) {
             class::ensure_class(&mut classes, &mut order, &id);
+            class::set_stereotype(&mut classes, &id, stereotype);
             if let Some(body) = body_start {
                 if body.ends_with('}') {
                     let inner = body.trim_end_matches('}').trim();
@@ -805,34 +939,33 @@ fn parse_class(source: &str) -> Result<ClassDiagram, IrError> {
     Ok(ClassDiagram { classes, relations })
 }
 
-fn parse_entity_decl(line: &str) -> Option<(String, Option<&str>)> {
+fn parse_entity_decl(line: &str) -> Option<(String, Option<String>, Option<&str>)> {
     for prefix in ["abstract class ", "interface ", "enum ", "class "] {
         if let Some(rest) = line.strip_prefix(prefix) {
             let rest = rest.trim();
+            let from_prefix = match prefix {
+                "interface " => Some("interface".to_string()),
+                "enum " => Some("enum".to_string()),
+                "abstract class " => Some("abstract".to_string()),
+                _ => None,
+            };
             if let Some(brace) = rest.find('{') {
-                let id = strip_stereotype(&rest[..brace]);
+                let (id, from_angle) = class::split_id_stereotype(rest[..brace].trim());
                 if id.is_empty() {
                     return None;
                 }
-                return Some((id, Some(rest[brace + 1..].trim())));
+                let stereotype = from_angle.or(from_prefix);
+                return Some((id, stereotype, Some(rest[brace + 1..].trim())));
             }
-            let id = strip_stereotype(rest);
+            let (id, from_angle) = class::split_id_stereotype(rest);
             if id.is_empty() {
                 return None;
             }
-            return Some((id, None));
+            let stereotype = from_angle.or(from_prefix);
+            return Some((id, stereotype, None));
         }
     }
     None
-}
-
-fn strip_stereotype(s: &str) -> String {
-    let s = s.trim();
-    if let Some(idx) = s.find("<<") {
-        s[..idx].trim().to_string()
-    } else {
-        s.to_string()
-    }
 }
 
 fn parse_colon_member(line: &str) -> Option<(String, String)> {
@@ -899,6 +1032,38 @@ Bob --> Alice: Hi
         assert_eq!(s.messages.len(), 2);
         assert_eq!(s.messages[0].arrow, MessageArrow::Solid);
         assert_eq!(s.messages[1].arrow, MessageArrow::Dashed);
+    }
+
+    #[test]
+    fn parse_sequence_notes() {
+        let src = r#"@startuml
+Alice -> Bob: hi
+note left of Alice: thinking
+note over Alice, Bob: shared
+note right of Bob
+done
+end note
+Bob --> Alice: bye
+@enduml"#;
+        let doc = parse_to_document(src).unwrap();
+        let Diagram::Sequence(s) = doc.primary().unwrap() else {
+            panic!("expected sequence");
+        };
+        assert_eq!(s.messages.len(), 2);
+        assert_eq!(s.notes.len(), 3);
+        assert_eq!(s.notes[0].placement, crate::sequence::NotePlacement::LeftOf);
+        assert_eq!(s.notes[0].text, "thinking");
+        assert_eq!(s.notes[0].before_message, 1);
+        assert_eq!(s.notes[1].placement, crate::sequence::NotePlacement::Over);
+        assert_eq!(s.notes[1].actors.len(), 2);
+        assert_eq!(s.notes[2].text, "done");
+        let out = export_document(&doc).unwrap();
+        assert!(out.contains("note left of Alice"));
+        let doc2 = parse_to_document(&out).unwrap();
+        let Diagram::Sequence(s2) = doc2.primary().unwrap() else {
+            panic!("expected sequence");
+        };
+        assert_eq!(s2.notes.len(), 3);
     }
 
     #[test]
@@ -982,6 +1147,10 @@ Service ..> Repository : uses
         assert_eq!(c.classes.len(), 2);
         assert_eq!(c.relations[0].kind, class::RelationKind::Dependency);
         assert_eq!(c.relations[0].label, "uses");
+        let repo = c.classes.iter().find(|x| x.id == "Repository").unwrap();
+        assert_eq!(repo.stereotype.as_deref(), Some("interface"));
+        let out = export_document(&doc).unwrap();
+        assert!(out.contains("interface Repository"));
     }
 
     #[test]

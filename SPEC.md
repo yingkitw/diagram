@@ -58,20 +58,23 @@ Mermaid remains the primary authored Format. Syntax below is Compatibility cover
 - **Styling**: `style`, `classDef`, `class`, `linkStyle`
 - **Interactive SVG**: `href`, tooltip via click targets in render output
 
-### Sequence diagrams (MVP)
+### Sequence diagrams (MVP + notes)
 
-- `sequenceDiagram`, participants, `->>` / `-->>` messages
-- Not yet: notes, loops, alt/opt, activations, self-messages
+- `sequenceDiagram`, participants, `->>` / `-->>` messages, self-messages (`A->>A`)
+- Notes: `Note left of X:`, `Note right of X:`, `Note over A,B:`
+- Not yet: loops, alt/opt, activations, parallel fragments
 
-### Class diagrams (MVP)
+### Class diagrams (MVP + stereotypes)
 
 - `classDiagram`, classes with members, relations (`<|--`, `*--`, `o--`, `-->`, `--`, `..>`, `..|>`)
-- Not yet: interfaces, generics, cardinality, notes
+- Stereotypes: `class Foo <<interface>>` or body line `<<interface>>` (SVG «…»; PlantUML `interface`/`enum`/`abstract class`)
+- Not yet: generics, cardinality, notes
 
-### Gantt charts (MVP)
+### Gantt charts (MVP + milestones)
 
 - `gantt`, `title`, `dateFormat YYYY-MM-DD`, sections, tasks with `crit`/`active`/`done`
-- Not yet: milestones, excludes, today marker, other dateFormats
+- Milestones: `milestone` tag with `0d` (point-in-time; SVG diamond; `after` starts on milestone day)
+- Not yet: excludes, today marker, other dateFormats
 
 ### State diagrams (MVP)
 
@@ -91,6 +94,8 @@ Mermaid remains the primary authored Format. Syntax below is Compatibility cover
 ### Sequence
 
 - `@startuml` … `@enduml`, `participant` / `actor`, `->` / `-->` messages
+- Notes: one-liner `note left|right of Actor: text`, multiline `note …` / `end note`, and `note over A, B`
+- Export emits PlantUML note syntax from IR `Note` (roundtrip with Mermaid notes)
 
 ### Class
 

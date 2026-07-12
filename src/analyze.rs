@@ -67,6 +67,8 @@ pub struct SequenceMetrics {
     pub messages: usize,
     pub solid_messages: usize,
     pub dashed_messages: usize,
+    pub notes: usize,
+    pub self_messages: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -284,11 +286,14 @@ fn sequence_metrics(s: &crate::sequence::SequenceDiagram) -> SequenceMetrics {
         .iter()
         .filter(|m| m.arrow == crate::sequence::MessageArrow::Solid)
         .count();
+    let self_messages = s.messages.iter().filter(|m| m.from == m.to).count();
     SequenceMetrics {
         participants: s.participants.len(),
         messages: s.messages.len(),
         solid_messages: solid,
         dashed_messages: s.messages.len() - solid,
+        notes: s.notes.len(),
+        self_messages,
     }
 }
 
@@ -386,6 +391,8 @@ pub struct SequenceDiff {
     pub added_messages: Vec<crate::sequence::Message>,
     pub removed_messages: Vec<crate::sequence::Message>,
     pub modified_messages: Vec<(crate::sequence::Message, crate::sequence::Message)>,
+    pub added_notes: usize,
+    pub removed_notes: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -593,6 +600,8 @@ fn diff_sequence(
         added_messages,
         removed_messages,
         modified_messages,
+        added_notes: right.notes.len().saturating_sub(left.notes.len()),
+        removed_notes: left.notes.len().saturating_sub(right.notes.len()),
     }
 }
 
@@ -606,6 +615,8 @@ fn sequence_unchanged(d: &SequenceDiff) -> bool {
         && d.added_messages.is_empty()
         && d.removed_messages.is_empty()
         && d.modified_messages.is_empty()
+        && d.added_notes == 0
+        && d.removed_notes == 0
 }
 
 fn diff_class(

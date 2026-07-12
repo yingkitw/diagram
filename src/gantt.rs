@@ -17,6 +17,8 @@ pub struct GanttTask {
     pub crit: bool,
     pub done: bool,
     pub active: bool,
+    /// Point-in-time marker (`milestone` tag); rendered as a diamond.
+    pub milestone: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -164,6 +166,7 @@ pub fn parse(source: &str) -> Result<GanttDiagram, ParseError> {
         let mut crit = false;
         let mut done = false;
         let mut active = false;
+        let mut milestone = false;
         let mut id: Option<String> = None;
         let mut start: Option<i64> = None;
         let mut end: Option<i64> = None;
@@ -175,7 +178,12 @@ pub fn parse(source: &str) -> Result<GanttDiagram, ParseError> {
                 "crit" => crit = true,
                 "done" => done = true,
                 "active" => active = true,
-                "milestone" => duration = Some(0),
+                "milestone" => {
+                    milestone = true;
+                    if duration.is_none() {
+                        duration = Some(0);
+                    }
+                }
                 _ if p.starts_with("after ") => {
                     after_id = Some(p.strip_prefix("after ").unwrap().trim().to_string());
                 }
@@ -227,7 +235,13 @@ pub fn parse(source: &str) -> Result<GanttDiagram, ParseError> {
         let end = if let Some(e) = end {
             e
         } else if let Some(dur) = duration {
-            start + dur.max(1)
+            if milestone {
+                start + dur.max(0)
+            } else {
+                start + dur.max(1)
+            }
+        } else if milestone {
+            start
         } else {
             return Err(ParseError {
                 message: "task missing end date or duration".into(),
@@ -235,20 +249,23 @@ pub fn parse(source: &str) -> Result<GanttDiagram, ParseError> {
             });
         };
 
+        // Milestones are points; `after` dependents start on the milestone day.
+        let after_anchor = if milestone { start } else { end };
         if let Some(ref tid) = id {
-            id_end.insert(tid.clone(), end);
+            id_end.insert(tid.clone(), after_anchor);
         }
-        cursor_start = Some(end);
+        cursor_start = Some(after_anchor);
 
         tasks.push(GanttTask {
             name,
             id,
             start,
-            end,
+            end: if milestone { start } else { end },
             section: section.clone(),
             crit,
             done,
             active,
+            milestone,
         });
     }
 
@@ -282,12 +299,19 @@ impl GanttDiagram {
             if t.done {
                 meta.push("done".to_string());
             }
+            if t.milestone {
+                meta.push("milestone".to_string());
+            }
             if let Some(id) = &t.id {
                 meta.push(id.clone());
             }
             meta.push(format_ymd(t.start));
-            let dur = (t.end - t.start).max(1);
-            meta.push(format!("{dur}d"));
+            if t.milestone {
+                meta.push("0d".to_string());
+            } else {
+                let dur = (t.end - t.start).max(1);
+                meta.push(format!("{dur}d"));
+            }
             out.push_str(&format!("    {} : {}\n", t.name, meta.join(", ")));
         }
         out
@@ -308,6 +332,7 @@ struct LaidTask {
     crit: bool,
     done: bool,
     active: bool,
+    milestone: bool,
 }
 
 struct GanttLayout {
@@ -346,7 +371,11 @@ fn layout(diagram: &GanttDiagram) -> GanttLayout {
             y += ROW_H;
         }
         let x = MARGIN + LABEL_W + (t.start - min_day) as f64 * DAY_W;
-        let w = ((t.end - t.start) as f64 * DAY_W).max(DAY_W);
+        let w = if t.milestone {
+            0.0
+        } else {
+            ((t.end - t.start) as f64 * DAY_W).max(DAY_W)
+        };
         tasks.push(LaidTask {
             name: t.name.clone(),
             x,
@@ -355,6 +384,7 @@ fn layout(diagram: &GanttDiagram) -> GanttLayout {
             crit: t.crit,
             done: t.done,
             active: t.active,
+            milestone: t.milestone,
         });
         y += ROW_H;
     }
@@ -481,13 +511,29 @@ pub fn render_svg(diagram: &GanttDiagram, theme: Theme) -> String {
             c = muted,
             t = esc(&t.name),
         ));
-        svg.push_str(&format!(
-            r##"<rect x="{x}" y="{y}" width="{w}" height="18" rx="3" fill="{fill}"/>"##,
-            x = t.x,
-            y = t.y + 4.0,
-            w = t.w,
-            fill = fill,
-        ));
+        if t.milestone {
+            let cx = t.x;
+            let cy = t.y + 13.0;
+            let s = 8.0;
+            svg.push_str(&format!(
+                r##"<polygon points="{x1},{y0} {x2},{y1} {x1},{y2} {x0},{y1}" fill="{fill}" stroke="{fill}"/>"##,
+                x0 = cx - s,
+                x1 = cx,
+                x2 = cx + s,
+                y0 = cy - s,
+                y1 = cy,
+                y2 = cy + s,
+                fill = fill,
+            ));
+        } else {
+            svg.push_str(&format!(
+                r##"<rect x="{x}" y="{y}" width="{w}" height="18" rx="3" fill="{fill}"/>"##,
+                x = t.x,
+                y = t.y + 4.0,
+                w = t.w,
+                fill = fill,
+            ));
+        }
     }
 
     svg.push_str("</svg>");
@@ -546,5 +592,28 @@ mod tests {
     fn is_gantt_detects() {
         assert!(is_gantt(SAMPLE));
         assert!(!is_gantt("graph TD\n A-->B\n"));
+    }
+
+    #[test]
+    fn parse_milestone() {
+        let src = r#"gantt
+    title Ship
+    dateFormat YYYY-MM-DD
+    section Build
+    Implement :a1, 2024-01-01, 5d
+    Launch :milestone, m1, 2024-01-10, 0d
+    Followup :after m1, 3d
+"#;
+        let g = parse(src).unwrap();
+        assert!(g.tasks[1].milestone);
+        assert_eq!(g.tasks[1].start, g.tasks[1].end);
+        assert_eq!(g.tasks[2].start, g.tasks[1].start);
+        let svg = render_svg(&g, Theme::Light);
+        assert!(svg.contains("<polygon"));
+        let out = g.to_mermaid();
+        assert!(out.contains("milestone"));
+        let g2 = parse(&out).unwrap();
+        assert!(g2.tasks[1].milestone);
+        assert_eq!(g2.tasks[1].name, "Launch");
     }
 }

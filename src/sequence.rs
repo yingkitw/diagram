@@ -37,10 +37,30 @@ pub struct Message {
     pub arrow: MessageArrow,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NotePlacement {
+    LeftOf,
+    RightOf,
+    Over,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Note {
+    pub placement: NotePlacement,
+    /// One actor for left/right; one or two for over.
+    pub actors: Vec<String>,
+    pub text: String,
+    /// Emit this note before `messages[before_message]` (or after all if == messages.len()).
+    pub before_message: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SequenceDiagram {
     pub participants: Vec<Participant>,
     pub messages: Vec<Message>,
+    #[serde(default)]
+    pub notes: Vec<Note>,
 }
 
 #[derive(Debug, Clone)]
@@ -87,6 +107,7 @@ pub fn parse(source: &str) -> Result<SequenceDiagram, ParseError> {
     let mut order: Vec<String> = Vec::new();
     let mut labels: HashMap<String, String> = HashMap::new();
     let mut messages: Vec<Message> = Vec::new();
+    let mut notes: Vec<Note> = Vec::new();
 
     for (line_num, text) in lines.iter().skip(1) {
         if let Some(rest) = text
@@ -98,6 +119,14 @@ pub fn parse(source: &str) -> Result<SequenceDiagram, ParseError> {
                 order.push(id.clone());
             }
             labels.insert(id, label);
+            continue;
+        }
+
+        if let Some(note) = parse_note(text, messages.len()) {
+            for a in &note.actors {
+                ensure_participant(&mut order, &mut labels, a);
+            }
+            notes.push(note);
             continue;
         }
 
@@ -125,6 +154,7 @@ pub fn parse(source: &str) -> Result<SequenceDiagram, ParseError> {
     Ok(SequenceDiagram {
         participants,
         messages,
+        notes,
     })
 }
 
@@ -167,6 +197,37 @@ fn parse_message(text: &str) -> Option<Message> {
     None
 }
 
+fn parse_note(text: &str, before_message: usize) -> Option<Note> {
+    let rest = text.strip_prefix("Note ")?.trim_start();
+    let (placement, rest) = if let Some(r) = rest.strip_prefix("left of ") {
+        (NotePlacement::LeftOf, r)
+    } else if let Some(r) = rest.strip_prefix("right of ") {
+        (NotePlacement::RightOf, r)
+    } else if let Some(r) = rest.strip_prefix("over ") {
+        (NotePlacement::Over, r)
+    } else {
+        return None;
+    };
+    let (actors_part, note_text) = rest.split_once(':')?;
+    let actors: Vec<String> = actors_part
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if actors.is_empty() {
+        return None;
+    }
+    if matches!(placement, NotePlacement::LeftOf | NotePlacement::RightOf) && actors.len() != 1 {
+        return None;
+    }
+    Some(Note {
+        placement,
+        actors,
+        text: note_text.trim().to_string(),
+        before_message,
+    })
+}
+
 impl SequenceDiagram {
     pub fn to_mermaid(&self) -> String {
         let mut out = String::from("sequenceDiagram\n");
@@ -177,17 +238,32 @@ impl SequenceDiagram {
                 out.push_str(&format!("    participant {}\n", p.id));
             }
         }
-        for m in &self.messages {
-            out.push_str(&format!(
-                "    {}{}{}: {}\n",
-                m.from,
-                m.arrow.mermaid_str(),
-                m.to,
-                m.text
-            ));
+        for i in 0..=self.messages.len() {
+            for n in self.notes.iter().filter(|n| n.before_message == i) {
+                out.push_str(&format!("    {}\n", note_mermaid(n)));
+            }
+            if let Some(m) = self.messages.get(i) {
+                out.push_str(&format!(
+                    "    {}{}{}: {}\n",
+                    m.from,
+                    m.arrow.mermaid_str(),
+                    m.to,
+                    m.text
+                ));
+            }
         }
         out
     }
+}
+
+fn note_mermaid(n: &Note) -> String {
+    let actors = n.actors.join(",");
+    let place = match n.placement {
+        NotePlacement::LeftOf => format!("Note left of {actors}"),
+        NotePlacement::RightOf => format!("Note right of {actors}"),
+        NotePlacement::Over => format!("Note over {actors}"),
+    };
+    format!("{place}: {}", n.text)
 }
 
 struct LaidParticipant {
@@ -202,6 +278,15 @@ struct LaidMessage {
     y: f64,
     text: String,
     arrow: MessageArrow,
+    self_msg: bool,
+}
+
+struct LaidNote {
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    text: String,
 }
 
 struct SequenceLayout {
@@ -209,6 +294,7 @@ struct SequenceLayout {
     height: f64,
     participants: Vec<LaidParticipant>,
     messages: Vec<LaidMessage>,
+    notes: Vec<LaidNote>,
     header_bottom: f64,
     footer_top: f64,
 }
@@ -218,7 +304,11 @@ const MARGIN_X: f64 = 40.0;
 const BOX_W: f64 = 100.0;
 const BOX_H: f64 = 40.0;
 const MSG_GAP: f64 = 48.0;
+const NOTE_GAP: f64 = 56.0;
 const TOP: f64 = 30.0;
+const NOTE_PAD: f64 = 8.0;
+const NOTE_CHAR_W: f64 = 7.0;
+const NOTE_LINE_H: f64 = 16.0;
 
 fn layout(diagram: &SequenceDiagram) -> SequenceLayout {
     let n = diagram.participants.len().max(1);
@@ -238,31 +328,101 @@ fn layout(diagram: &SequenceDiagram) -> SequenceLayout {
     let header_bottom = TOP + BOX_H;
     let mut y = header_bottom + MSG_GAP;
     let mut messages = Vec::new();
-    for m in &diagram.messages {
-        let from_x = *x_of.get(m.from.as_str()).unwrap_or(&MARGIN_X);
-        let to_x = *x_of.get(m.to.as_str()).unwrap_or(&MARGIN_X);
-        messages.push(LaidMessage {
-            from_x,
-            to_x,
-            y,
-            text: m.text.clone(),
-            arrow: m.arrow,
-        });
-        y += MSG_GAP;
+    let mut notes = Vec::new();
+
+    for i in 0..=diagram.messages.len() {
+        for note in diagram.notes.iter().filter(|n| n.before_message == i) {
+            let (nx, nw) = note_x_w(note, &x_of);
+            let lines = wrap_note_lines(&note.text, 28);
+            let nh = NOTE_PAD * 2.0 + lines.len().max(1) as f64 * NOTE_LINE_H;
+            notes.push(LaidNote {
+                x: nx,
+                y,
+                w: nw,
+                h: nh,
+                text: lines.join("\n"),
+            });
+            y += nh + 12.0;
+        }
+        if let Some(m) = diagram.messages.get(i) {
+            let from_x = *x_of.get(m.from.as_str()).unwrap_or(&MARGIN_X);
+            let to_x = *x_of.get(m.to.as_str()).unwrap_or(&MARGIN_X);
+            let self_msg = m.from == m.to;
+            messages.push(LaidMessage {
+                from_x,
+                to_x,
+                y,
+                text: m.text.clone(),
+                arrow: m.arrow,
+                self_msg,
+            });
+            y += if self_msg { NOTE_GAP } else { MSG_GAP };
+        }
     }
 
     let footer_top = y + 10.0;
     let height = footer_top + BOX_H + TOP;
-    let width = MARGIN_X * 2.0 + BOX_W + (n.saturating_sub(1) as f64) * COL_GAP;
+    let mut width = MARGIN_X * 2.0 + BOX_W + (n.saturating_sub(1) as f64) * COL_GAP;
+    for note in &notes {
+        width = width.max(note.x + note.w + MARGIN_X);
+    }
 
     SequenceLayout {
         width,
         height,
         participants,
         messages,
+        notes,
         header_bottom,
         footer_top,
     }
+}
+
+fn note_x_w(note: &Note, x_of: &HashMap<&str, f64>) -> (f64, f64) {
+    let text_w = (note.text.len().min(28) as f64 * NOTE_CHAR_W + NOTE_PAD * 2.0).max(80.0);
+    match note.placement {
+        NotePlacement::LeftOf => {
+            let ax = *x_of.get(note.actors[0].as_str()).unwrap_or(&MARGIN_X);
+            (ax - BOX_W / 2.0 - text_w - 8.0, text_w)
+        }
+        NotePlacement::RightOf => {
+            let ax = *x_of.get(note.actors[0].as_str()).unwrap_or(&MARGIN_X);
+            (ax + BOX_W / 2.0 + 8.0, text_w)
+        }
+        NotePlacement::Over => {
+            let xs: Vec<f64> = note
+                .actors
+                .iter()
+                .map(|a| *x_of.get(a.as_str()).unwrap_or(&MARGIN_X))
+                .collect();
+            let min_x = xs.iter().cloned().fold(f64::INFINITY, f64::min);
+            let max_x = xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            let left = min_x - BOX_W / 4.0;
+            let right = max_x + BOX_W / 4.0;
+            let w = (right - left).max(text_w);
+            (left, w)
+        }
+    }
+}
+
+fn wrap_note_lines(text: &str, width: usize) -> Vec<String> {
+    if text.len() <= width {
+        return vec![text.to_string()];
+    }
+    let mut lines = Vec::new();
+    let mut rest = text;
+    while rest.len() > width {
+        let split = rest[..width]
+            .rfind(' ')
+            .filter(|&i| i > width / 3)
+            .unwrap_or(width);
+        lines.push(rest[..split].trim().to_string());
+        rest = rest[split..].trim_start();
+    }
+    if !rest.is_empty() {
+        lines.push(rest.to_string());
+    }
+    lines
 }
 
 fn esc(s: &str) -> String {
@@ -298,11 +458,19 @@ pub fn render_svg(diagram: &SequenceDiagram, theme: Theme) -> String {
         Theme::Dark => "#94a3b8",
         Theme::Light => "#475569",
     };
+    let note_fill = match theme {
+        Theme::Dark => "#3f3f1f",
+        Theme::Light => "#fef9c3",
+    };
+    let note_stroke = match theme {
+        Theme::Dark => "#a3a34a",
+        Theme::Light => "#ca8a04",
+    };
 
     let mut svg = format!(
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">"##,
-        w = laid.width as i32,
-        h = laid.height as i32,
+        w = laid.width.ceil() as i32,
+        h = laid.height.ceil() as i32,
     );
     svg.push_str(&format!(
         r#"<rect width="100%" height="100%" fill="{bg}"/>"#
@@ -317,7 +485,6 @@ pub fn render_svg(diagram: &SequenceDiagram, theme: Theme) -> String {
     ));
 
     for p in &laid.participants {
-        // Lifeline
         svg.push_str(&format!(
             r##"<line x1="{x}" y1="{y1}" x2="{x}" y2="{y2}" stroke="{c}" stroke-dasharray="4,4"/>"##,
             x = p.x,
@@ -325,7 +492,6 @@ pub fn render_svg(diagram: &SequenceDiagram, theme: Theme) -> String {
             y2 = laid.footer_top,
             c = line_color,
         ));
-        // Header box
         draw_box(
             &mut svg,
             p.x,
@@ -335,7 +501,6 @@ pub fn render_svg(diagram: &SequenceDiagram, theme: Theme) -> String {
             box_stroke,
             text_color,
         );
-        // Footer box
         draw_box(
             &mut svg,
             p.x,
@@ -347,28 +512,71 @@ pub fn render_svg(diagram: &SequenceDiagram, theme: Theme) -> String {
         );
     }
 
+    for n in &laid.notes {
+        svg.push_str(&format!(
+            r##"<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="4" fill="{fill}" stroke="{stroke}"/>"##,
+            x = n.x,
+            y = n.y,
+            w = n.w,
+            h = n.h,
+            fill = note_fill,
+            stroke = note_stroke,
+        ));
+        let mut ty = n.y + NOTE_PAD + NOTE_LINE_H * 0.75;
+        for line in n.text.lines() {
+            svg.push_str(&format!(
+                r##"<text x="{x}" y="{ty}" fill="{c}" font-size="12" font-family="sans-serif">{t}</text>"##,
+                x = n.x + NOTE_PAD,
+                c = text_color,
+                t = esc(line),
+            ));
+            ty += NOTE_LINE_H;
+        }
+    }
+
     for m in &laid.messages {
         let dash = match m.arrow {
             MessageArrow::Solid => "",
             MessageArrow::Dashed => r#" stroke-dasharray="6,4""#,
         };
-        svg.push_str(&format!(
-            r##"<line x1="{x1}" y1="{y}" x2="{x2}" y2="{y}" stroke="{c}"{dash} marker-end="url(#seq-arrow)"/>"##,
-            x1 = m.from_x,
-            x2 = m.to_x,
-            y = m.y,
-            c = line_color,
-            dash = dash,
-        ));
-        if !m.text.is_empty() {
-            let mid = (m.from_x + m.to_x) / 2.0;
+        if m.self_msg {
+            let x = m.from_x;
+            let y1 = m.y - 10.0;
+            let y2 = m.y + 10.0;
+            let loop_x = x + 40.0;
             svg.push_str(&format!(
-                r##"<text x="{x}" y="{y}" text-anchor="middle" fill="{c}" font-size="12" font-family="sans-serif">{t}</text>"##,
-                x = mid,
-                y = m.y - 8.0,
-                c = msg_color,
-                t = esc(&m.text),
+                r##"<path d="M{x},{y1} L{loop_x},{y1} L{loop_x},{y2} L{x},{y2}" fill="none" stroke="{c}"{dash} marker-end="url(#seq-arrow)"/>"##,
+                c = line_color,
+                dash = dash,
             ));
+            if !m.text.is_empty() {
+                svg.push_str(&format!(
+                    r##"<text x="{x}" y="{y}" text-anchor="start" fill="{c}" font-size="12" font-family="sans-serif">{t}</text>"##,
+                    x = loop_x + 6.0,
+                    y = m.y,
+                    c = msg_color,
+                    t = esc(&m.text),
+                ));
+            }
+        } else {
+            svg.push_str(&format!(
+                r##"<line x1="{x1}" y1="{y}" x2="{x2}" y2="{y}" stroke="{c}"{dash} marker-end="url(#seq-arrow)"/>"##,
+                x1 = m.from_x,
+                x2 = m.to_x,
+                y = m.y,
+                c = line_color,
+                dash = dash,
+            ));
+            if !m.text.is_empty() {
+                let mid = (m.from_x + m.to_x) / 2.0;
+                svg.push_str(&format!(
+                    r##"<text x="{x}" y="{y}" text-anchor="middle" fill="{c}" font-size="12" font-family="sans-serif">{t}</text>"##,
+                    x = mid,
+                    y = m.y - 8.0,
+                    c = msg_color,
+                    t = esc(&m.text),
+                ));
+            }
         }
     }
 
@@ -457,6 +665,34 @@ mod tests {
         assert!(svg.contains("Alice"));
         assert!(svg.contains("Hello Bob"));
         assert!(svg.ends_with("</svg>"));
+    }
+
+    #[test]
+    fn parse_notes_and_self_message() {
+        let src = r#"sequenceDiagram
+    participant A
+    participant B
+    Note left of A: thinking
+    A->>B: hi
+    Note over A,B: shared
+    B->>B: self check
+    Note right of B: done
+"#;
+        let d = parse(src).unwrap();
+        assert_eq!(d.notes.len(), 3);
+        assert_eq!(d.notes[0].placement, NotePlacement::LeftOf);
+        assert_eq!(d.notes[0].before_message, 0);
+        assert_eq!(d.notes[1].placement, NotePlacement::Over);
+        assert_eq!(d.notes[1].before_message, 1);
+        assert_eq!(d.messages[1].from, "B");
+        assert_eq!(d.messages[1].to, "B");
+        let out = d.to_mermaid();
+        let d2 = parse(&out).unwrap();
+        assert_eq!(d2.notes.len(), 3);
+        assert_eq!(d2.messages.len(), 2);
+        let svg = render_svg(&d, Theme::Dark);
+        assert!(svg.contains("thinking"));
+        assert!(svg.contains("self check"));
     }
 
     #[test]

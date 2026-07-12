@@ -379,13 +379,16 @@ fn test_sequence_example_parse_and_render() {
     assert!(diagram::sequence::is_sequence(&source));
     let diagram = diagram::sequence::parse(&source).unwrap();
     assert_eq!(diagram.participants.len(), 2);
-    assert_eq!(diagram.messages.len(), 4);
+    assert_eq!(diagram.messages.len(), 5);
+    assert_eq!(diagram.notes.len(), 3);
     let svg = diagram::sequence::render_svg(&diagram, diagram::renderer::Theme::Dark);
     assert!(svg.contains("<svg"));
     assert!(svg.contains("Alice"));
     assert!(svg.contains("Hello Bob"));
+    assert!(svg.contains("handshake") || svg.contains("ready to greet"));
     let roundtrip = diagram::sequence::parse(&diagram.to_mermaid()).unwrap();
-    assert_eq!(roundtrip.messages.len(), 4);
+    assert_eq!(roundtrip.messages.len(), 5);
+    assert_eq!(roundtrip.notes.len(), 3);
 }
 
 #[test]

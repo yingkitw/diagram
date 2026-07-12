@@ -1,4 +1,7 @@
 classDiagram
+    class Drawable <<interface>> {
+        +draw()
+    }
     class Animal {
         +String name
         +int age
@@ -6,8 +9,10 @@ classDiagram
     }
     class Dog {
         +bark()
+        +draw()
     }
     class Cat
     Animal <|-- Dog : inherits
     Animal <|-- Cat
     Animal --> Food : eats
+    Dog ..|> Drawable

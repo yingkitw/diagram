@@ -45,7 +45,12 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 - [ ] Vector PDF export (optional; raster PDF shipped)
 - [x] State + ER kinds (IR + Mermaid Compatibility)
 - [x] VS Code extension (preview / validate / render via CLI)
-- [ ] Sequence/class/gantt extras (notes, loops, interfaces, milestones, …)
+- [x] Sequence extras: notes (`left of` / `right of` / `over`) + self-messages
+- [x] PlantUML sequence note import/export (one-liner + multiline + over)
+- [x] Class stereotypes (`<<interface>>` / PlantUML `interface`/`enum`/`abstract`)
+- [x] Gantt milestones (`milestone` + diamond render)
+- [ ] Sequence loops / alt / opt fragments
+- [ ] Class extras (generics, cardinality, notes)
 - [ ] Plugin API for custom shapes / render backends
 - [ ] Wasm embed for browser preview without local server
 - [x] Semantic diff v1 (IR-level `DocumentDiff` for all kinds incl. state/er; multi-diagram)
@@ -60,4 +65,4 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 | Structural analysis API | Limited | Limited |
 | Docs CI without heavy runtimes | mmdc heavy | Docker/Java common |
 
-Prioritize next: adapter depth (DOT/PlantUML/D2 subsets) → sequence/class/gantt extras → Wasm embed / vector PDF.
+Prioritize next: sequence loops / alt/opt → deeper DOT/D2 subsets → Wasm embed / vector PDF.

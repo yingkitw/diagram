@@ -203,10 +203,16 @@ fn diagram_summary_lines(d: &Diagram) -> Vec<String> {
                 format!("Edges: {}", fc.edges.len()),
             ]
         }
-        Diagram::Sequence(s) => vec![
-            format!("Participants: {}", s.participants.len()),
-            format!("Messages: {}", s.messages.len()),
-        ],
+        Diagram::Sequence(s) => {
+            let mut lines = vec![
+                format!("Participants: {}", s.participants.len()),
+                format!("Messages: {}", s.messages.len()),
+            ];
+            if !s.notes.is_empty() {
+                lines.push(format!("Notes: {}", s.notes.len()));
+            }
+            lines
+        }
         Diagram::Class(c) => vec![
             format!("Classes: {}", c.classes.len()),
             format!("Relations: {}", c.relations.len()),
@@ -295,6 +301,7 @@ fn diagram_info_json(d: &Diagram) -> serde_json::Value {
             "kind": "sequence",
             "participants": s.participants.len(),
             "messages": s.messages.len(),
+            "notes": s.notes.len(),
         }),
         Diagram::Class(c) => serde_json::json!({
             "kind": "class",

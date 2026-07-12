@@ -1,8 +1,13 @@
 @startuml
 participant Alice
 participant "Bob Server" as Bob
+note left of Alice: ready to greet
 Alice -> Bob: Hello Bob
+note over Alice, Bob: handshake
 Bob --> Alice: Hi Alice
 Alice -> Bob: How are you?
+note right of Bob
+feeling good
+end note
 Bob --> Alice: Great thanks
 @enduml

@@ -50,6 +50,9 @@ pub struct ClassMember {
 pub struct Class {
     pub id: String,
     pub members: Vec<ClassMember>,
+    /// Mermaid/PlantUML stereotype (e.g. `interface`, `enumeration`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stereotype: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,7 +120,7 @@ pub fn parse(source: &str) -> Result<ClassDiagram, ParseError> {
         if let Some(rest) = text.strip_prefix("class ") {
             let rest = rest.trim();
             if let Some(brace) = rest.find('{') {
-                let id = rest[..brace].trim().to_string();
+                let (id, stereotype) = split_id_stereotype(rest[..brace].trim());
                 if id.is_empty() {
                     return Err(ParseError {
                         message: "empty class name".into(),
@@ -125,17 +128,17 @@ pub fn parse(source: &str) -> Result<ClassDiagram, ParseError> {
                     });
                 }
                 ensure_class(&mut classes, &mut order, &id);
+                set_stereotype(&mut classes, &id, stereotype);
                 let after = rest[brace + 1..].trim();
                 if after.ends_with('}') {
                     let inner = after.trim_end_matches('}').trim();
                     if !inner.is_empty() {
                         for part in inner.split(';') {
                             let m = part.trim();
-                            if !m.is_empty() {
-                                classes.get_mut(&id).unwrap().members.push(ClassMember {
-                                    text: m.to_string(),
-                                });
+                            if m.is_empty() {
+                                continue;
                             }
+                            push_member_or_stereotype(&mut classes, &id, m);
                         }
                     }
                     i += 1;
@@ -151,23 +154,20 @@ pub fn parse(source: &str) -> Result<ClassDiagram, ParseError> {
                         if let Some(stripped) = body.strip_suffix('}') {
                             let m = stripped.trim();
                             if !m.is_empty() {
-                                classes.get_mut(&id).unwrap().members.push(ClassMember {
-                                    text: m.to_string(),
-                                });
+                                push_member_or_stereotype(&mut classes, &id, m);
                             }
                             i += 1;
                             break;
                         }
-                        classes.get_mut(&id).unwrap().members.push(ClassMember {
-                            text: body.clone(),
-                        });
+                        push_member_or_stereotype(&mut classes, &id, body);
                         i += 1;
                     }
                 }
                 continue;
             } else {
-                let id = rest.to_string();
+                let (id, stereotype) = split_id_stereotype(rest);
                 ensure_class(&mut classes, &mut order, &id);
+                set_stereotype(&mut classes, &id, stereotype);
                 i += 1;
                 continue;
             }
@@ -222,8 +222,66 @@ pub(crate) fn ensure_class(classes: &mut HashMap<String, Class>, order: &mut Vec
             Class {
                 id: id.to_string(),
                 members: Vec::new(),
+                stereotype: None,
             },
         );
+    }
+}
+
+pub(crate) fn set_stereotype(
+    classes: &mut HashMap<String, Class>,
+    id: &str,
+    stereotype: Option<String>,
+) {
+    let Some(stereo) = stereotype else {
+        return;
+    };
+    if let Some(c) = classes.get_mut(id) {
+        if c.stereotype.is_none() {
+            c.stereotype = Some(stereo);
+        }
+    }
+}
+
+fn push_member_or_stereotype(classes: &mut HashMap<String, Class>, id: &str, text: &str) {
+    let t = text.trim();
+    if let Some(stereo) = stereotype_only(t) {
+        set_stereotype(classes, id, Some(stereo));
+        return;
+    }
+    classes.get_mut(id).unwrap().members.push(ClassMember {
+        text: t.to_string(),
+    });
+}
+
+/// `Foo <<interface>>` → (`Foo`, Some(`interface`))
+pub(crate) fn split_id_stereotype(s: &str) -> (String, Option<String>) {
+    let s = s.trim();
+    let Some(open) = s.find("<<") else {
+        return (s.to_string(), None);
+    };
+    let after = &s[open + 2..];
+    let Some(close) = after.find(">>") else {
+        return (s.to_string(), None);
+    };
+    let id = s[..open].trim().to_string();
+    let stereo = after[..close].trim().to_string();
+    if id.is_empty() || stereo.is_empty() {
+        return (s.to_string(), None);
+    }
+    (id, Some(stereo))
+}
+
+fn stereotype_only(s: &str) -> Option<String> {
+    let s = s.trim();
+    if !s.starts_with("<<") || !s.ends_with(">>") || s.len() < 5 {
+        return None;
+    }
+    let inner = s[2..s.len() - 2].trim();
+    if inner.is_empty() {
+        None
+    } else {
+        Some(inner.to_string())
     }
 }
 
@@ -263,10 +321,15 @@ impl ClassDiagram {
     pub fn to_mermaid(&self) -> String {
         let mut out = String::from("classDiagram\n");
         for c in &self.classes {
+            let stereo = c
+                .stereotype
+                .as_ref()
+                .map(|s| format!(" <<{s}>>"))
+                .unwrap_or_default();
             if c.members.is_empty() {
-                out.push_str(&format!("    class {}\n", c.id));
+                out.push_str(&format!("    class {}{stereo}\n", c.id));
             } else {
-                out.push_str(&format!("    class {} {{\n", c.id));
+                out.push_str(&format!("    class {}{stereo} {{\n", c.id));
                 for m in &c.members {
                     out.push_str(&format!("        {}\n", m.text));
                 }
@@ -297,6 +360,7 @@ impl ClassDiagram {
 
 struct LaidClass {
     id: String,
+    stereotype: Option<String>,
     members: Vec<String>,
     x: f64,
     y: f64,
@@ -330,12 +394,15 @@ const MARGIN: f64 = 40.0;
 
 fn class_size(c: &Class) -> (f64, f64) {
     let mut max_chars = c.id.len();
+    if let Some(s) = &c.stereotype {
+        max_chars = max_chars.max(s.len() + 4); // «…»
+    }
     for m in &c.members {
         max_chars = max_chars.max(m.text.len());
     }
     let w = (max_chars as f64 * CHAR_W + PAD * 2.0).max(BOX_MIN_W);
-    // title + divider + members (at least empty compartment spacing)
-    let lines = 1 + c.members.len().max(1);
+    let header_lines = 1 + usize::from(c.stereotype.is_some());
+    let lines = header_lines + c.members.len().max(1);
     let h = PAD * 2.0 + lines as f64 * LINE_H + 8.0;
     (w, h)
 }
@@ -408,6 +475,7 @@ fn layout(diagram: &ClassDiagram) -> ClassLayout {
             let cy = y + (row_h - h) / 2.0;
             laid_classes.push(LaidClass {
                 id: c.id.clone(),
+                stereotype: c.stereotype.clone(),
                 members: c.members.iter().map(|m| m.text.clone()).collect(),
                 x,
                 y: cy,
@@ -578,7 +646,19 @@ pub fn render_svg(diagram: &ClassDiagram, theme: Theme) -> String {
             c = text_color,
             t = esc(&c.id),
         ));
-        let div_y = c.y + PAD + LINE_H + 2.0;
+        let mut header_bottom = PAD + LINE_H;
+        if let Some(stereo) = &c.stereotype {
+            let sy = title_y + LINE_H;
+            svg.push_str(&format!(
+                r##"<text x="{x}" y="{y}" text-anchor="middle" fill="{c}" font-size="11" font-style="italic" font-family="sans-serif">«{t}»</text>"##,
+                x = c.x + c.w / 2.0,
+                y = sy,
+                c = muted,
+                t = esc(stereo),
+            ));
+            header_bottom += LINE_H;
+        }
+        let div_y = c.y + header_bottom + 2.0;
         svg.push_str(&format!(
             r##"<line x1="{x1}" y1="{y}" x2="{x2}" y2="{y}" stroke="{s}"/>"##,
             x1 = c.x,
@@ -657,5 +737,39 @@ mod tests {
         assert!(is_class(SAMPLE));
         assert!(!is_class("graph TD\n  A-->B\n"));
         assert!(!is_class("sequenceDiagram\n  A->>B: hi\n"));
+    }
+
+    #[test]
+    fn parse_stereotype() {
+        let src = r#"classDiagram
+    class Shape <<interface>> {
+        +draw()
+    }
+    class Circle {
+        <<implementation>>
+        +draw()
+    }
+    Circle ..|> Shape
+"#;
+        let d = parse(src).unwrap();
+        let shape = d.classes.iter().find(|c| c.id == "Shape").unwrap();
+        assert_eq!(shape.stereotype.as_deref(), Some("interface"));
+        assert_eq!(shape.members.len(), 1);
+        let circle = d.classes.iter().find(|c| c.id == "Circle").unwrap();
+        assert_eq!(circle.stereotype.as_deref(), Some("implementation"));
+        let out = d.to_mermaid();
+        assert!(out.contains("<<interface>>"));
+        let d2 = parse(&out).unwrap();
+        assert_eq!(
+            d2.classes
+                .iter()
+                .find(|c| c.id == "Shape")
+                .unwrap()
+                .stereotype
+                .as_deref(),
+            Some("interface")
+        );
+        let svg = render_svg(&d, Theme::Dark);
+        assert!(svg.contains("«interface»"));
     }
 }
