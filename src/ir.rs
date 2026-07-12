@@ -6,6 +6,7 @@ use crate::gantt::{self, GanttDiagram};
 use crate::layout;
 use crate::renderer::{self, Theme};
 use crate::sequence::{self, SequenceDiagram};
+use crate::state::{self, StateDiagram};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -17,6 +18,7 @@ pub enum Kind {
     Sequence,
     Class,
     Gantt,
+    State,
 }
 
 impl fmt::Display for Kind {
@@ -26,6 +28,7 @@ impl fmt::Display for Kind {
             Self::Sequence => write!(f, "sequence"),
             Self::Class => write!(f, "class"),
             Self::Gantt => write!(f, "gantt"),
+            Self::State => write!(f, "state"),
         }
     }
 }
@@ -38,6 +41,7 @@ pub enum Diagram {
     Sequence(SequenceDiagram),
     Class(ClassDiagram),
     Gantt(GanttDiagram),
+    State(StateDiagram),
 }
 
 impl Diagram {
@@ -47,6 +51,7 @@ impl Diagram {
             Self::Sequence(_) => Kind::Sequence,
             Self::Class(_) => Kind::Class,
             Self::Gantt(_) => Kind::Gantt,
+            Self::State(_) => Kind::State,
         }
     }
 
@@ -56,6 +61,7 @@ impl Diagram {
             Self::Sequence(d) => d.to_mermaid(),
             Self::Class(d) => d.to_mermaid(),
             Self::Gantt(d) => d.to_mermaid(),
+            Self::State(d) => d.to_mermaid(),
         }
     }
 
@@ -68,6 +74,7 @@ impl Diagram {
             Self::Sequence(d) => sequence::render_svg(d, theme),
             Self::Class(d) => class::render_svg(d, theme),
             Self::Gantt(d) => gantt::render_svg(d, theme),
+            Self::State(d) => state::render_svg(d, theme),
         }
     }
 }
@@ -204,6 +211,10 @@ fn diagram_summary_lines(d: &Diagram) -> Vec<String> {
             }
             out
         }
+        Diagram::State(s) => vec![
+            format!("States: {}", s.states.len()),
+            format!("Transitions: {}", s.transitions.len()),
+        ],
     }
 }
 
@@ -283,6 +294,11 @@ fn diagram_info_json(d: &Diagram) -> serde_json::Value {
             "kind": "gantt",
             "title": g.title,
             "tasks": g.tasks.len(),
+        }),
+        Diagram::State(s) => serde_json::json!({
+            "kind": "state",
+            "states": s.states.len(),
+            "transitions": s.transitions.len(),
         }),
     }
 }

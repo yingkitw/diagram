@@ -16,6 +16,10 @@ pub fn parse(source: &str) -> Result<Diagram, IrError> {
         Ok(Diagram::Gantt(
             crate::gantt::parse(source).map_err(|e| e.to_string())?,
         ))
+    } else if crate::state::is_state(source) {
+        Ok(Diagram::State(
+            crate::state::parse(source).map_err(|e| e.to_string())?,
+        ))
     } else {
         Ok(Diagram::Flowchart(
             crate::parser::parse(source).map_err(|e| e.to_string())?,
@@ -82,5 +86,11 @@ mod tests {
         assert_eq!(doc.diagrams.len(), 2);
         assert_eq!(doc.diagrams[0].kind(), Kind::Flowchart);
         assert_eq!(doc.diagrams[1].kind(), Kind::Sequence);
+    }
+
+    #[test]
+    fn parse_state_kind() {
+        let d = parse("stateDiagram-v2\n  [*] --> A\n").unwrap();
+        assert_eq!(d.kind(), Kind::State);
     }
 }

@@ -218,7 +218,7 @@ fn diagram_d2_warnings(index: usize, d: &Diagram) -> Vec<LossWarning> {
             }
             out
         }
-        Diagram::Sequence(_) | Diagram::Class(_) | Diagram::Gantt(_) => Vec::new(),
+        Diagram::Sequence(_) | Diagram::Class(_) | Diagram::Gantt(_) | Diagram::State(_) => Vec::new(),
     }
 }
 
@@ -379,7 +379,7 @@ fn diagram_dot_warnings(index: usize, d: &Diagram) -> Vec<LossWarning> {
             }
             out
         }
-        Diagram::Sequence(_) | Diagram::Class(_) | Diagram::Gantt(_) => Vec::new(),
+        Diagram::Sequence(_) | Diagram::Class(_) | Diagram::Gantt(_) | Diagram::State(_) => Vec::new(),
     }
 }
 
@@ -410,7 +410,7 @@ fn diagram_mermaid_warnings(index: usize, d: &Diagram) -> Vec<LossWarning> {
             }
             out
         }
-        Diagram::Sequence(_) | Diagram::Class(_) | Diagram::Gantt(_) => Vec::new(),
+        Diagram::Sequence(_) | Diagram::Class(_) | Diagram::Gantt(_) | Diagram::State(_) => Vec::new(),
     }
 }
 

@@ -26,7 +26,7 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 - [x] **Format detection** + `import` / `export` CLI + MCP tools
 - [x] Analysis pack v1: metrics (node/edge counts, depth, cycle list, orphan rate) as JSON
 - [x] Fold Mermaid parsers behind `formats::mermaid` (behavior-preserving move)
-- [x] Generation: kind-aware `create` scaffold (`diagram create --kind flowchart|sequence|class|gantt`)
+- [x] Generation: kind-aware `create` scaffold (`diagram create --kind flowchart|sequence|class|gantt|state`)
 
 ## Medium-term (interchange + render)
 
@@ -43,7 +43,7 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 - [x] D2 adapter (flat flowchart import/export)
 - [ ] Excalidraw / Kroki-adjacent adapters as demand warrants
 - [ ] Vector PDF export (optional; raster PDF shipped)
-- [ ] State + ER kinds (IR + Mermaid Compatibility)
+- [ ] State + ER kinds (IR + Mermaid Compatibility) — state MVP shipped; ER pending
 - [ ] Sequence/class/gantt extras (notes, loops, interfaces, milestones, …)
 - [ ] Plugin API for custom shapes / render backends
 - [ ] Wasm embed for browser preview without local server

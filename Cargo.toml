@@ -1,12 +1,36 @@
 [package]
 name = "diagram"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
-description = "Native Rust diagram platform: render, generate, analyze, and interchange (Mermaid/PlantUML compatible)"
+description = "Rust CLI & MCP server for diagram rendering, generation, and analysis — Mermaid, PlantUML, Graphviz DOT, D2, JSON IR → SVG/PNG/PDF without Chromium or Java"
 authors = ["Ying Kit WONG"]
 license = "Apache-2.0"
 repository = "https://github.com/yingkitw/diagram"
+homepage = "https://github.com/yingkitw/diagram"
+documentation = "https://github.com/yingkitw/diagram#readme"
 readme = "README.md"
+keywords = [
+    "diagram",
+    "mermaid",
+    "plantuml",
+    "graphviz",
+    "dot",
+    "d2",
+    "flowchart",
+    "sequence-diagram",
+    "class-diagram",
+    "gantt",
+    "state-diagram",
+    "svg",
+    "png",
+    "pdf",
+    "mcp",
+    "cli",
+    "render",
+    "visualization",
+    "architecture",
+]
+categories = ["command-line-utilities", "development-tools", "visualization", "parsing"]
 
 [dependencies]
 rmcp = { version = "2", features = ["server", "transport-io", "macros"] }

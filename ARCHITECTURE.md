@@ -39,10 +39,12 @@ main.rs
   ├── sequence.rs  — Mermaid sequence → sequence IR → SVG
   ├── class.rs     — Mermaid class → class IR → SVG
   ├── gantt.rs     — Mermaid gantt → gantt IR → SVG
+  ├── state.rs     — Mermaid state → state IR → SVG
   ├── ir.rs        — canonical Document / Diagram / Kind
   ├── formats/     — detect, import, export
   │     ├── mermaid.rs
   │     ├── dot.rs
+  │     ├── d2.rs
   │     └── plantuml.rs
   ├── analyze.rs   — structural metrics on IR
   ├── generate.rs  — kind-aware scaffolds (create)

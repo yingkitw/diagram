@@ -1,17 +1,39 @@
 # diagram
 
-A native Rust platform for **diagram rendering, generation, analysis, and interchange** — with Mermaid/PlantUML compatibility, not Mermaid lock-in.
+**Rust diagram CLI & MCP server** — render, generate, analyze, and convert **Mermaid**, **PlantUML**, **Graphviz DOT**, **D2**, and **JSON IR** to **SVG**, **PNG**, or **PDF**. No Chromium, Node, or JVM required.
 
-| Pillar | What it means |
-|--------|----------------|
-| **Render** | Fast, Chromium-free layout → SVG, PNG, and PDF (raster) |
-| **Generate** | Structured create/edit via CLI + MCP (agents and scripts) |
-| **Analyze** | Validate, structural diff (all IR kinds), merge (flowchart), metrics on the IR |
-| **Interchange** | Import/export across formats via a canonical IR |
+> Native alternative to **mermaid-cli (mmdc)**, **Kroki**, and headless **PlantUML** / **D2** for docs CI, agents, and local tooling.
 
-**Why this vs Mermaid.js / PlantUML?** Single native binary, MCP-first agent workflows, analysis without a browser or JVM, and a format-agnostic core so you can keep existing Mermaid/PlantUML sources while moving toward a richer IR.
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org/)
 
-**Formats today:** Mermaid (flowchart, sequence, class, gantt); native JSON IR; Graphviz DOT, D2, and PlantUML (sequence, class, activity) via adapters; SVG/PNG/PDF render output.
+**Search terms:** mermaid renderer, mermaid to svg, mermaid to png, plantuml converter, dot to mermaid, d2 to svg, flowchart generator, sequence diagram tool, class diagram renderer, gantt chart cli, diagram diff, mcp diagram server, ai agent diagrams, architecture diagram as code.
+
+## Contents
+
+- [Features](#features)
+- [Quick start](#quick-start)
+- [Supported formats](#supported-formats)
+- [CLI commands](#cli-commands)
+- [Examples](#examples)
+- [MCP (AI agents)](#mcp-ai-agents)
+- [Architecture](#architecture)
+- [Testing](#testing)
+- [Project layout](#project-layout)
+
+## Features
+
+| Capability | Keywords |
+|------------|----------|
+| **Render** | mermaid svg, png export, pdf export, live preview, watch mode, dark/light theme |
+| **Interchange** | import export, format conversion, canonical json ir, lossiness report |
+| **Analyze** | validate diagram, structural diff, merge flowcharts, metrics (cycles, depth, orphans) |
+| **Generate** | scaffold flowchart/sequence/class/gantt, cli edit nodes and edges |
+| **Agents** | model context protocol, stdio mcp, claude desktop, cursor |
+
+**Diagram kinds:** flowchart, sequence diagram, class diagram, gantt chart, state diagram.
+
+**Why choose this over Mermaid.js / PlantUML?** Single native binary, MCP-first agent workflows, structural analysis on a canonical IR, and multi-format interchange — not a Mermaid-only clone.
 
 ## Quick start
 
@@ -33,8 +55,10 @@ diagram ir sample.mmd
 diagram import examples/sequence.puml --output sample.ir.json
 diagram import examples/activity.puml --output activity.ir.json
 diagram import examples/simple-flowchart.dot --output flow.ir.json
+diagram import examples/simple-flowchart.d2 --output flow-d2.ir.json
 diagram export sample.ir.json --output out.mmd --to mermaid
 diagram export sample.ir.json --output out.dot --to dot
+diagram export sample.ir.json --output out.d2 --to d2
 diagram export sample.ir.json --output out.puml --to plantuml
 diagram lossiness sample.ir.json --to mermaid
 
@@ -42,11 +66,12 @@ diagram lossiness sample.ir.json --to mermaid
 diagram validate sample.mmd
 diagram metrics sample.mmd
 diagram info sample.mmd
-diagram diff base.mmd modified.mmd   # IR-level diff; supports Mermaid, DOT, PlantUML, JSON
+diagram diff base.mmd modified.mmd   # IR-level diff; Mermaid, DOT, D2, PlantUML, JSON
 
 # Generate
 diagram create --kind flowchart --output new.mmd
 diagram create --kind sequence --output new.puml
+diagram create --kind flowchart --output new.d2
 
 # Markdown docs pipeline
 diagram markdown examples/doc-with-diagrams.md --output-dir assets/diagrams --output guide.rendered.md
@@ -54,26 +79,27 @@ diagram add-node sample.mmd X "New Node" --shape stadium
 diagram mcp   # agent tools over stdio
 ```
 
-## Compatibility
+## Supported formats
 
-| Format | Role today | Direction |
-|--------|------------|-----------|
-| Mermaid (`.mmd`) | Primary import + export for flowchart/sequence/class/gantt | Keep high Compatibility |
-| Native JSON IR | Canonical interchange (`diagram ir`, `import`/`export`) | Stable |
-| SVG | Render export | Stable |
-| PNG | Render export (`.png` via `diagram render`) | Stable |
-| PDF | Render export (`.pdf` via `diagram render`; raster embed) | Stable |
-| PlantUML (`.puml`) | Sequence + class + activity-shaped flowchart import/export | Expand syntax |
-| D2 (`.d2`) | Flowchart import + export (flat subset) | Expand syntax |
-| Graphviz DOT (`.dot`) | Flowchart import + export (digraph subset) | Expand subset |
-| Lossiness report | `diagram lossiness` / `export --report` / MCP | Expand per-format warnings |
+| Format | Extensions | Import | Export | Notes |
+|--------|------------|--------|--------|-------|
+| **Mermaid** | `.mmd`, `.mermaid` | ✓ | ✓ | Flowchart, sequence, class, gantt, state |
+| **JSON IR** | `.json` | ✓ | ✓ | Canonical, lossless interchange |
+| **PlantUML** | `.puml`, `.plantuml` | ✓ | ✓ | Sequence, class, activity → flowchart |
+| **Graphviz DOT** | `.dot`, `.gv` | ✓ | ✓ | Digraph subset ↔ flowchart |
+| **D2** | `.d2` | ✓ | ✓ | Flat flowchart subset |
+| **SVG** | `.svg` | — | ✓ | Primary render output |
+| **PNG** | `.png` | — | ✓ | Raster via resvg |
+| **PDF** | `.pdf` | — | ✓ | Raster embed via printpdf |
 
-## CLI (current)
+Use `diagram lossiness` before export to see what IR semantics a target format cannot represent.
+
+## CLI commands
 
 ```bash
 diagram parse | ir | import | export | lossiness
 diagram info | render | preview | validate | metrics | diff | merge
-diagram create --kind flowchart|sequence|class|gantt
+diagram create --kind flowchart|sequence|class|gantt|state
 diagram markdown
 diagram add-node | remove-node | update-node | add-edge | remove-edge | update-edge ...
 diagram get-node | get-edge | list-nodes | list-edges | get-mermaid | set-mermaid ...
@@ -89,18 +115,18 @@ Under `examples/`:
 | File | Kind / format |
 |------|----------------|
 | `simple-flowchart.mmd`, `shapes.mmd`, `subgraphs.mmd`, … | Mermaid flowchart |
-| `sequence.mmd`, `class.mmd`, `gantt.mmd` | Mermaid sequence / class / gantt |
+| `sequence.mmd`, `class.mmd`, `gantt.mmd`, `state.mmd` | Mermaid sequence / class / gantt / state |
 | `sequence.puml`, `class.puml`, `activity.puml` | PlantUML |
 | `simple-flowchart.d2` | D2 |
 | `simple-flowchart.dot` | Graphviz DOT |
 | `multi-document.json` | Multi-diagram JSON IR |
 | `doc-with-diagrams.md` | Markdown pipeline demo |
 
-## MCP
+## MCP (AI agents)
 
 `diagram mcp` exposes parse, import/export, lossiness, render (SVG/PNG/PDF), validate, diff/merge, metrics, markdown processing, and graph edit tools over stdio — designed for AI assistants without Chromium or Java.
 
-See the full tool table in `SPEC.md`.
+See the full tool table in [`SPEC.md`](SPEC.md).
 
 ### Claude Desktop
 
@@ -115,7 +141,7 @@ See the full tool table in `SPEC.md`.
 }
 ```
 
-## Architecture (target)
+## Architecture
 
 ```
 Formats (Mermaid, PlantUML, DOT, D2, …)  ──import──►  Canonical IR  ──export──►  Formats
@@ -127,7 +153,7 @@ Formats (Mermaid, PlantUML, DOT, D2, …)  ──import──►  Canonical IR  
                                                   diff, …)     tools)
 ```
 
-See `ARCHITECTURE.md`, `CONTEXT.md`, and `docs/adr/0001-canonical-ir-and-format-adapters.md`.
+See [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CONTEXT.md`](CONTEXT.md), and [`docs/adr/0001-canonical-ir-and-format-adapters.md`](docs/adr/0001-canonical-ir-and-format-adapters.md).
 
 ## Testing
 

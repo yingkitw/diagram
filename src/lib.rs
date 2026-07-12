@@ -17,3 +17,4 @@ pub mod png;
 pub mod preview;
 pub mod renderer;
 pub mod sequence;
+pub mod state;

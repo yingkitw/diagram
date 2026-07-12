@@ -111,6 +111,7 @@ fn should_process_unlabeled(content: &str) -> bool {
     crate::sequence::is_sequence(content)
         || crate::class::is_class(content)
         || crate::gantt::is_gantt(content)
+        || crate::state::is_state(content)
         || trimmed.starts_with("graph ")
         || trimmed.starts_with("flowchart ")
 }

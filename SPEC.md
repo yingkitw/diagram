@@ -73,6 +73,12 @@ Mermaid remains the primary authored Format. Syntax below is Compatibility cover
 - `gantt`, `title`, `dateFormat YYYY-MM-DD`, sections, tasks with `crit`/`active`/`done`
 - Not yet: milestones, excludes, today marker, other dateFormats
 
+### State diagrams (MVP)
+
+- `stateDiagram-v2`, `[*]` start/end, transitions `-->` with optional `: label`
+- `state "label" as id`, `state id <<choice>>` / `<<fork>>` / `<<join>>`
+- Not yet: composite/nested states, notes, concurrency regions
+
 ## PlantUML Compatibility (subset)
 
 ### Sequence

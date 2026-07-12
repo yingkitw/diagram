@@ -10,8 +10,9 @@ pub fn parse_kind(s: &str) -> Result<Kind, String> {
         "sequence" | "sequencediagram" => Ok(Kind::Sequence),
         "class" | "classdiagram" => Ok(Kind::Class),
         "gantt" => Ok(Kind::Gantt),
+        "state" | "statediagram" => Ok(Kind::State),
         _ => Err(format!(
-            "unknown kind '{s}'; expected flowchart, sequence, class, or gantt"
+            "unknown kind '{s}'; expected flowchart, sequence, class, gantt, or state"
         )),
     }
 }
@@ -28,6 +29,9 @@ pub fn mermaid_scaffold(kind: Kind) -> &'static str {
         }
         Kind::Gantt => {
             "gantt\n    title Project Plan\n    dateFormat YYYY-MM-DD\n    section Phase 1\n    Task :a1, 2024-01-01, 7d\n"
+        }
+        Kind::State => {
+            "stateDiagram-v2\n    [*] --> Idle\n    Idle --> [*]\n"
         }
     }
 }
@@ -110,6 +114,7 @@ mod tests {
             Kind::Sequence,
             Kind::Class,
             Kind::Gantt,
+            Kind::State,
         ] {
             let doc = scaffold_document(kind).unwrap();
             assert_eq!(doc.primary().unwrap().kind(), kind);

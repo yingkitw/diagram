@@ -171,9 +171,9 @@ pub enum Cli {
         path: String,
     },
 
-    #[command(about = "Create a new diagram scaffold (flowchart, sequence, class, gantt)")]
+    #[command(about = "Create a new diagram scaffold (flowchart, sequence, class, gantt, state)")]
     Create {
-        #[arg(long, help = "Diagram kind: flowchart, sequence, class, gantt")]
+        #[arg(long, help = "Diagram kind: flowchart, sequence, class, gantt, state")]
         kind: String,
         #[arg(long, short, help = "Output file path (.mmd or .json)")]
         output: String,

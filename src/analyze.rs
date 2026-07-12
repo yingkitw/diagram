@@ -31,6 +31,7 @@ pub enum MetricsDetail {
     Sequence(SequenceMetrics),
     Class(ClassMetrics),
     Gantt(GanttMetrics),
+    State(StateMetrics),
     Empty {},
 }
 
@@ -85,6 +86,14 @@ pub struct GanttMetrics {
     pub active_tasks: usize,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct StateMetrics {
+    pub states: usize,
+    pub transitions: usize,
+    pub start_end_nodes: usize,
+    pub choice_nodes: usize,
+}
+
 pub fn metrics(doc: &Document) -> DocumentMetrics {
     if doc.diagrams.is_empty() {
         return DocumentMetrics {
@@ -130,6 +139,7 @@ fn metrics_for_diagram(d: &Diagram) -> MetricsDetail {
         Diagram::Sequence(s) => MetricsDetail::Sequence(sequence_metrics(s)),
         Diagram::Class(c) => MetricsDetail::Class(class_metrics(c)),
         Diagram::Gantt(g) => MetricsDetail::Gantt(gantt_metrics(g)),
+        Diagram::State(s) => MetricsDetail::State(state_metrics(s)),
     }
 }
 
@@ -300,6 +310,23 @@ fn gantt_metrics(g: &crate::gantt::GanttDiagram) -> GanttMetrics {
     }
 }
 
+fn state_metrics(s: &crate::state::StateDiagram) -> StateMetrics {
+    StateMetrics {
+        states: s.states.len(),
+        transitions: s.transitions.len(),
+        start_end_nodes: s
+            .states
+            .iter()
+            .filter(|n| n.kind == crate::state::StateNodeKind::StartEnd)
+            .count(),
+        choice_nodes: s
+            .states
+            .iter()
+            .filter(|n| n.kind == crate::state::StateNodeKind::Choice)
+            .count(),
+    }
+}
+
 // --- Semantic diff (IR-level) ---
 
 #[derive(Debug, Clone, Serialize)]
@@ -331,6 +358,7 @@ pub enum DiffDetail {
     Sequence(SequenceDiff),
     Class(ClassDiff),
     Gantt(GanttDiff),
+    State(StateDiff),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -355,6 +383,14 @@ pub struct GanttDiff {
     pub title_changed: bool,
     pub added_tasks: Vec<String>,
     pub removed_tasks: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StateDiff {
+    pub added_states: Vec<String>,
+    pub removed_states: Vec<String>,
+    pub added_transitions: Vec<crate::state::Transition>,
+    pub removed_transitions: Vec<crate::state::Transition>,
 }
 
 /// Structural diff of two Documents (any supported kind, by diagram index).
@@ -453,6 +489,11 @@ fn diff_diagram_pair(
             let d = diff_gantt(l, r);
             let unchanged = gantt_unchanged(&d);
             (Some(DiffDetail::Gantt(d)), unchanged)
+        }
+        (Diagram::State(l), Diagram::State(r)) => {
+            let d = diff_state(l, r);
+            let unchanged = state_unchanged(&d);
+            (Some(DiffDetail::State(d)), unchanged)
         }
         _ => unreachable!("kinds matched above"),
     };
@@ -632,6 +673,60 @@ fn gantt_unchanged(d: &GanttDiff) -> bool {
     !d.title_changed && d.added_tasks.is_empty() && d.removed_tasks.is_empty()
 }
 
+fn diff_state(
+    left: &crate::state::StateDiagram,
+    right: &crate::state::StateDiagram,
+) -> StateDiff {
+    let left_ids: HashSet<&str> = left.states.iter().map(|s| s.id.as_str()).collect();
+    let right_ids: HashSet<&str> = right.states.iter().map(|s| s.id.as_str()).collect();
+
+    let added_states: Vec<String> = right
+        .states
+        .iter()
+        .filter(|s| !left_ids.contains(s.id.as_str()))
+        .map(|s| s.id.clone())
+        .collect();
+    let removed_states: Vec<String> = left
+        .states
+        .iter()
+        .filter(|s| !right_ids.contains(s.id.as_str()))
+        .map(|s| s.id.clone())
+        .collect();
+
+    let transition_key = |t: &crate::state::Transition| {
+        format!("{}|{}|{}", t.from, t.to, t.label)
+    };
+    let left_t: HashSet<String> = left.transitions.iter().map(transition_key).collect();
+    let right_t: HashSet<String> = right.transitions.iter().map(transition_key).collect();
+
+    let added_transitions: Vec<crate::state::Transition> = right
+        .transitions
+        .iter()
+        .filter(|t| !left_t.contains(&transition_key(t)))
+        .cloned()
+        .collect();
+    let removed_transitions: Vec<crate::state::Transition> = left
+        .transitions
+        .iter()
+        .filter(|t| !right_t.contains(&transition_key(t)))
+        .cloned()
+        .collect();
+
+    StateDiff {
+        added_states,
+        removed_states,
+        added_transitions,
+        removed_transitions,
+    }
+}
+
+fn state_unchanged(d: &StateDiff) -> bool {
+    d.added_states.is_empty()
+        && d.removed_states.is_empty()
+        && d.added_transitions.is_empty()
+        && d.removed_transitions.is_empty()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -735,6 +830,20 @@ mod tests {
             panic!("expected sequence diff");
         };
         assert!(s.added_participants.contains(&"C".to_string()));
+    }
+
+    #[test]
+    fn state_metrics_counts() {
+        let doc = ir::from_mermaid(
+            "stateDiagram-v2\n  [*] --> A\n  A --> B\n  state check <<choice>>\n",
+        )
+        .unwrap();
+        let MetricsDetail::State(s) = metrics(&doc).detail else {
+            panic!("expected state metrics");
+        };
+        assert!(s.states >= 2);
+        assert_eq!(s.transitions, 2);
+        assert!(s.start_end_nodes >= 1);
     }
 
     #[test]

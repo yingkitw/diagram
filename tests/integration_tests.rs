@@ -111,6 +111,16 @@ fn test_all_examples_roundtrip() {
                     "task count mismatch for {:?}",
                     path
                 );
+            } else if diagram::state::is_state(&source) {
+                let diagram = diagram::state::parse(&source).unwrap();
+                let output = diagram.to_mermaid();
+                let reparsed = diagram::state::parse(&output).unwrap();
+                assert_eq!(
+                    diagram.transitions.len(),
+                    reparsed.transitions.len(),
+                    "transition count mismatch for {:?}",
+                    path
+                );
             } else {
                 let diagram = diagram::parser::parse(&source).unwrap();
                 let output = diagram.to_mermaid();
@@ -469,6 +479,18 @@ fn test_dot_example_parse_and_render() {
         .unwrap();
     assert!(svg.contains("<svg"));
     assert!(svg.contains("Start"));
+}
+
+#[test]
+fn test_state_example_parse_and_render() {
+    let path = examples_dir().join("state.mmd");
+    let source = fs::read_to_string(&path).unwrap();
+    assert!(diagram::state::is_state(&source));
+    let diagram = diagram::state::parse(&source).unwrap();
+    assert!(diagram.transitions.len() >= 5);
+    let svg = diagram::state::render_svg(&diagram, diagram::renderer::Theme::Dark);
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("Still"));
 }
 
 #[test]

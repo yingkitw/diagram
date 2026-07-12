@@ -13,6 +13,7 @@ pub fn is_d2(source: &str) -> bool {
         || trimmed.starts_with("sequenceDiagram")
         || trimmed.starts_with("classDiagram")
         || trimmed.starts_with("gantt")
+        || trimmed.starts_with("stateDiagram")
         || trimmed.starts_with("@startuml")
     {
         return false;

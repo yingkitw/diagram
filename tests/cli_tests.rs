@@ -298,6 +298,20 @@ fn test_cli_gantt_info_and_render() {
 }
 
 #[test]
+fn test_cli_state_info_and_render() {
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/state.mmd");
+    let path = path.to_str().unwrap();
+    let (stdout, _, code) = run(&["info", path]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("Kind: state"), "stdout: {stdout}");
+    assert!(stdout.contains("Transitions:"), "stdout: {stdout}");
+    let (stdout, _, code) = run(&["render", path]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("<svg"));
+    assert!(stdout.contains("Still"));
+}
+
+#[test]
 fn test_cli_ir_json_document() {
     let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.mmd");
     let path = path.to_str().unwrap();
