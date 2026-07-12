@@ -1,0 +1,121 @@
+{
+  "name": "diagram",
+  "displayName": "diagram",
+  "description": "Preview and validate Mermaid, PlantUML, DOT, D2, and JSON IR diagrams via the native diagram CLI (no Chromium)",
+  "version": "0.1.0",
+  "publisher": "yingkitw",
+  "license": "Apache-2.0",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Visualization",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "diagram",
+    "mermaid",
+    "plantuml",
+    "graphviz",
+    "dot",
+    "d2",
+    "flowchart",
+    "svg",
+    "preview"
+  ],
+  "activationEvents": [
+    "onLanguage:mermaid",
+    "onLanguage:plantuml",
+    "onLanguage:dot",
+    "onLanguage:d2",
+    "onCommand:diagram.preview",
+    "onCommand:diagram.validate",
+    "onCommand:diagram.renderSvg"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "diagram.preview",
+        "title": "Diagram: Preview SVG",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "diagram.validate",
+        "title": "Diagram: Validate"
+      },
+      {
+        "command": "diagram.renderSvg",
+        "title": "Diagram: Render SVG to File"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "diagram.preview",
+          "when": "resourceExtname =~ /\\.(mmd|mermaid|puml|plantuml|dot|gv|d2)$/",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "diagram.preview"
+        },
+        {
+          "command": "diagram.validate"
+        },
+        {
+          "command": "diagram.renderSvg"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "diagram",
+      "properties": {
+        "diagram.cliPath": {
+          "type": "string",
+          "default": "diagram",
+          "description": "Path to the diagram CLI binary (must be on PATH or absolute)."
+        },
+        "diagram.theme": {
+          "type": "string",
+          "enum": ["dark", "light"],
+          "default": "dark",
+          "description": "Theme passed to diagram render / preview."
+        },
+        "diagram.autoPreviewOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Refresh an open Diagram preview when the source file is saved."
+        }
+      }
+    },
+    "languages": [
+      {
+        "id": "mermaid",
+        "aliases": ["Mermaid", "mermaid"],
+        "extensions": [".mmd", ".mermaid"],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "plantuml",
+        "aliases": ["PlantUML", "plantuml"],
+        "extensions": [".puml", ".plantuml"]
+      },
+      {
+        "id": "dot",
+        "aliases": ["DOT", "Graphviz"],
+        "extensions": [".dot", ".gv"]
+      },
+      {
+        "id": "d2",
+        "aliases": ["D2", "d2"],
+        "extensions": [".d2"]
+      }
+    ]
+  },
+  "scripts": {
+    "check": "node check.js"
+  }
+}

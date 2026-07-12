@@ -112,3 +112,7 @@ SVG → resvg pixmap → RGB (+ optional alpha mask) → single-page PDF via pri
 ### Preview server
 
 Minimal `tokio` HTTP on localhost; HTML polls `/svg`.
+
+### VS Code extension
+
+`editors/vscode/` is a thin client: commands shell out to the `diagram` binary and show SVG in a webview. Layout/render stay in Rust — the extension does not embed Mermaid.js or Chromium.

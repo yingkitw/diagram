@@ -44,6 +44,7 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 - [ ] Excalidraw / Kroki-adjacent adapters as demand warrants
 - [ ] Vector PDF export (optional; raster PDF shipped)
 - [x] State + ER kinds (IR + Mermaid Compatibility)
+- [x] VS Code extension (preview / validate / render via CLI)
 - [ ] Sequence/class/gantt extras (notes, loops, interfaces, milestones, …)
 - [ ] Plugin API for custom shapes / render backends
 - [ ] Wasm embed for browser preview without local server
@@ -59,4 +60,4 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 | Structural analysis API | Limited | Limited |
 | Docs CI without heavy runtimes | mmdc heavy | Docker/Java common |
 
-Prioritize next: editor UX (VS Code) → adapter depth (DOT/PlantUML/D2 subsets) → sequence/class/gantt extras.
+Prioritize next: adapter depth (DOT/PlantUML/D2 subsets) → sequence/class/gantt extras → Wasm embed / vector PDF.

@@ -1,4 +1,4 @@
-.PHONY: run dev parse info render mcp
+.PHONY: run dev parse info render mcp test vscode-check
 
 # Run the MCP server
 run:
@@ -23,3 +23,11 @@ mcp:
 # Dev mode: auto-restart on code changes
 dev:
 	cargo watch -x 'run -- mcp'
+
+# Full Rust tests
+test:
+	cargo test
+
+# Validate VS Code extension package
+vscode-check:
+	node editors/vscode/check.js

@@ -17,13 +17,31 @@ fn run(args: &[&str]) -> (String, String, i32) {
 }
 
 fn temp_mmd(contents: &str) -> std::path::PathBuf {
+    let path = temp_path("mmd");
+    fs::write(&path, contents).unwrap();
+    path
+}
+
+fn temp_path(ext: &str) -> std::path::PathBuf {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let n = COUNTER.fetch_add(1, Ordering::SeqCst);
-    let mut path = std::env::temp_dir();
-    path.push(format!("diagram_test_{}_{}.mmd", std::process::id(), n));
-    fs::write(&path, contents).unwrap();
-    path
+    std::env::temp_dir().join(format!(
+        "diagram_cli_{}_{}_{}.{}",
+        std::process::id(),
+        n,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos(),
+        ext
+    ))
+}
+
+fn temp_dir() -> std::path::PathBuf {
+    let dir = temp_path("d").with_extension("");
+    fs::create_dir_all(&dir).unwrap();
+    dir
 }
 
 #[test]
@@ -152,7 +170,7 @@ fn test_cli_diff() {
 fn test_cli_merge() {
     let left = temp_mmd("graph TD\n    A[Start] --> B[End]\n");
     let right = temp_mmd("graph TD\n    A[Start] --> C[New]\n");
-    let output = std::env::temp_dir().join("merged_test.mmd");
+    let output = temp_path("mmd");
     let (stdout, _, code) = run(&[
         "merge",
         left.to_str().unwrap(),
@@ -178,8 +196,7 @@ fn test_cli_preview_help() {
 #[test]
 fn test_cli_multi_document_render() {
     let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/multi-document.json");
-    let dir = std::env::temp_dir().join(format!("diagram_multi_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = temp_dir();
     let (stdout, _, code) = run(&[
         "render",
         src.to_str().unwrap(),
@@ -200,7 +217,7 @@ fn test_cli_multi_document_render() {
 #[test]
 fn test_cli_markdown_pipeline() {
     let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/doc-with-diagrams.md");
-    let dir = std::env::temp_dir().join(format!("diagram_md_cli_{}", std::process::id()));
+    let dir = temp_dir();
     let img_dir = dir.join("assets");
     let out_md = dir.join("rendered.md");
     std::fs::create_dir_all(&img_dir).unwrap();
@@ -226,7 +243,7 @@ fn test_cli_markdown_pipeline() {
 #[test]
 fn test_cli_render_pdf() {
     let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.mmd");
-    let out = std::env::temp_dir().join(format!("diagram_render_{}.pdf", std::process::id()));
+    let out = temp_path("pdf");
     let (_, _, code) = run(&[
         "render",
         src.to_str().unwrap(),
@@ -242,7 +259,7 @@ fn test_cli_render_pdf() {
 #[test]
 fn test_cli_render_png() {
     let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.mmd");
-    let out = std::env::temp_dir().join(format!("diagram_render_{}.png", std::process::id()));
+    let out = temp_path("png");
     let (_, _, code) = run(&[
         "render",
         src.to_str().unwrap(),
@@ -356,7 +373,7 @@ fn test_cli_metrics_sequence() {
 }
 #[test]
 fn test_cli_create_flowchart() {
-    let out = std::env::temp_dir().join(format!("diagram_cli_create_{}.mmd", std::process::id()));
+    let out = temp_path("mmd");
     let path = out.to_str().unwrap();
     let (stdout, _, code) = run(&["create", "--kind", "flowchart", "--output", path]);
     assert_eq!(code, 0);
@@ -369,7 +386,7 @@ fn test_cli_create_flowchart() {
 #[test]
 fn test_cli_import_plantuml() {
     let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/sequence.puml");
-    let json_out = std::env::temp_dir().join(format!("diagram_puml_ir_{}.json", std::process::id()));
+    let json_out = temp_path("json");
     let (_, _, code) = run(&[
         "import",
         src.to_str().unwrap(),
@@ -385,7 +402,7 @@ fn test_cli_import_plantuml() {
 #[test]
 fn test_cli_import_dot() {
     let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.dot");
-    let json_out = std::env::temp_dir().join(format!("diagram_dot_ir_{}.json", std::process::id()));
+    let json_out = temp_path("json");
     let (_, _, code) = run(&[
         "import",
         src.to_str().unwrap(),
@@ -414,9 +431,9 @@ fn test_cli_export_plantuml() {
     let src =
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/sequence.puml");
     let json_out =
-        std::env::temp_dir().join(format!("diagram_puml_ir_{}.json", std::process::id()));
+        temp_path("json");
     let puml_out =
-        std::env::temp_dir().join(format!("diagram_puml_out_{}.puml", std::process::id()));
+        temp_path("puml");
     let (_, _, code) = run(&[
         "import",
         src.to_str().unwrap(),
@@ -445,8 +462,8 @@ fn test_cli_export_dot() {
     use std::fs;
     let src =
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.dot");
-    let json_out = std::env::temp_dir().join(format!("diagram_dot_ir_{}.json", std::process::id()));
-    let dot_out = std::env::temp_dir().join(format!("diagram_dot_out_{}.dot", std::process::id()));
+    let json_out = temp_path("json");
+    let dot_out = temp_path("dot");
     let (_, _, code) = run(&[
         "import",
         src.to_str().unwrap(),
@@ -473,7 +490,7 @@ fn test_cli_export_dot() {
 #[test]
 fn test_cli_import_d2() {
     let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.d2");
-    let json_out = std::env::temp_dir().join(format!("diagram_d2_ir_{}.json", std::process::id()));
+    let json_out = temp_path("json");
     let (_, _, code) = run(&[
         "import",
         src.to_str().unwrap(),
@@ -493,8 +510,8 @@ fn test_cli_export_d2() {
     use std::fs;
     let src =
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.d2");
-    let json_out = std::env::temp_dir().join(format!("diagram_d2_ir_{}.json", std::process::id()));
-    let d2_out = std::env::temp_dir().join(format!("diagram_d2_out_{}.d2", std::process::id()));
+    let json_out = temp_path("json");
+    let d2_out = temp_path("d2");
     let (_, _, code) = run(&[
         "import",
         src.to_str().unwrap(),
@@ -522,8 +539,8 @@ fn test_cli_export_d2() {
 fn test_cli_import_export_roundtrip() {
     use std::fs;
     let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/simple-flowchart.mmd");
-    let json_out = std::env::temp_dir().join(format!("diagram_ir_{}.json", std::process::id()));
-    let mmd_out = std::env::temp_dir().join(format!("diagram_out_{}.mmd", std::process::id()));
+    let json_out = temp_path("json");
+    let mmd_out = temp_path("mmd");
     let (_, _, code) = run(&[
         "import",
         src.to_str().unwrap(),

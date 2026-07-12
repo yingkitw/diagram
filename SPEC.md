@@ -282,6 +282,18 @@ pub mod sequence;
 | `/svg` | Current SVG render |
 | `/health` | `ok` |
 
+## VS Code extension
+
+`editors/vscode/` — optional editor UX that invokes the installed `diagram` CLI:
+
+| Command | CLI |
+|---------|-----|
+| Preview SVG | `diagram render <file> --theme …` → webview |
+| Validate | `diagram validate <file>` |
+| Render SVG to File | `diagram render <file> --output …` |
+
+Settings: `diagram.cliPath`, `diagram.theme`, `diagram.autoPreviewOnSave`.
+
 ## Rendering
 
 1. Kind-specific IR → layout (flowchart: layered BFS) → SVG

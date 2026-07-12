@@ -17,6 +17,7 @@
 - [CLI commands](#cli-commands)
 - [Examples](#examples)
 - [MCP (AI agents)](#mcp-ai-agents)
+- [VS Code / Cursor](#vs-code--cursor)
 - [Architecture](#architecture)
 - [Testing](#testing)
 - [Project layout](#project-layout)
@@ -141,6 +142,22 @@ See the full tool table in [`SPEC.md`](SPEC.md).
 }
 ```
 
+## VS Code / Cursor
+
+A lean extension under [`editors/vscode/`](editors/vscode/) shells out to the `diagram` CLI:
+
+- **Diagram: Preview SVG** — side webview (refreshes on save)
+- **Diagram: Validate** — flowchart validation
+- **Diagram: Render SVG to File**
+
+```bash
+# Install CLI first, then load the extension
+cargo install --path .
+cursor --extensionDevelopmentPath="$(pwd)/editors/vscode"
+```
+
+See [`editors/vscode/README.md`](editors/vscode/README.md) for settings (`diagram.cliPath`, theme).
+
 ## Architecture
 
 ```
@@ -159,6 +176,7 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CONTEXT.md`](CONTEXT.md), and [`docs
 
 ```bash
 cargo test
+make vscode-check   # validates editors/vscode package.json + extension.js
 ```
 
 ## Project layout
@@ -168,6 +186,7 @@ src/
 ├── main.rs / cli.rs / mcp.rs / preview.rs
 ├── ir.rs / formats/ / lossiness.rs / analyze.rs / generate.rs / markdown.rs / composite.rs
 ├── diagram.rs / parser.rs / layout.rs / renderer.rs   # flowchart
-├── sequence.rs / class.rs / gantt.rs                  # other kinds
-├── png.rs / pdf.rs                                    # raster render backends
+├── sequence.rs / class.rs / gantt.rs / state.rs / er.rs
+├── png.rs / pdf.rs
+editors/vscode/                                        # VS Code / Cursor extension
 ```
