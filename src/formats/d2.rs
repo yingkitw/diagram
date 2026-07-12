@@ -1,8 +1,17 @@
-//! D2 Compatibility adapter (flat flowchart subset ↔ flowchart IR).
+//! D2 Compatibility adapter (flowchart subset ↔ IR, including containers as subgraphs).
 
-use crate::diagram::{Diagram, Edge, EdgeStyle, Node, NodeShape};
+use crate::diagram::{Diagram, Edge, EdgeStyle, Node, NodeShape, Subgraph};
 use crate::ir::{Document, IrError};
 use std::collections::HashMap;
+
+enum BraceBlock {
+    Attrs(HashMap<String, String>),
+    Container { members: Vec<String> },
+}
+
+fn is_d2_attr_key(key: &str) -> bool {
+    matches!(key, "shape" | "label" | "style") || key.starts_with("style.")
+}
 
 /// Whether source looks like D2 (not Mermaid, DOT, PlantUML, or JSON IR).
 pub fn is_d2(source: &str) -> bool {
@@ -211,6 +220,7 @@ struct Parser<'a> {
     rankdir: String,
     nodes: HashMap<String, Node>,
     edges: Vec<Edge>,
+    subgraphs: Vec<Subgraph>,
 }
 
 impl<'a> Parser<'a> {
@@ -221,6 +231,7 @@ impl<'a> Parser<'a> {
             rankdir: "TD".into(),
             nodes: HashMap::new(),
             edges: Vec::new(),
+            subgraphs: Vec::new(),
         }
     }
 
@@ -238,7 +249,7 @@ impl<'a> Parser<'a> {
             rankdir: self.rankdir,
             nodes,
             edges: self.edges,
-            subgraphs: Vec::new(),
+            subgraphs: self.subgraphs,
             styles: Vec::new(),
             class_defs: Vec::new(),
             class_applies: Vec::new(),
@@ -257,19 +268,7 @@ impl<'a> Parser<'a> {
 
         let checkpoint = self.pos;
         if let Some((left, op, right, label, dashed)) = self.try_parse_connection()? {
-            let style = if dashed || op == "--" {
-                EdgeStyle::Dashed
-            } else {
-                EdgeStyle::Arrow
-            };
-            self.ensure_node(&left, &left);
-            self.ensure_node(&right, &right);
-            self.edges.push(Edge {
-                from: left,
-                to: right,
-                label: label.unwrap_or_default(),
-                style,
-            });
+            self.push_edge(left, op, right, label, dashed);
             return Ok(());
         }
         self.pos = checkpoint;
@@ -284,21 +283,38 @@ impl<'a> Parser<'a> {
         self.skip_ws_and_comments();
 
         let mut label = None;
-        let mut shape = NodeShape::Rect;
-
         if self.peek_char() != Some('{') {
             label = Some(self.read_label_token()?);
             self.skip_ws_and_comments();
         }
 
         if self.peek_char() == Some('{') {
-            let attrs = self.read_block()?;
-            if let Some(l) = attrs.get("label") {
-                label = Some(unquote(l));
+            match self.read_brace_block()? {
+                BraceBlock::Attrs(attrs) => {
+                    let mut shape = NodeShape::Rect;
+                    let mut text = label.unwrap_or_else(|| id.clone());
+                    if let Some(l) = attrs.get("label") {
+                        text = unquote(l);
+                    }
+                    if let Some(s) = attrs.get("shape") {
+                        shape = shape_from_d2(s);
+                    }
+                    self.nodes.insert(
+                        id.clone(),
+                        Node {
+                            id,
+                            text,
+                            shape,
+                            href: None,
+                            tooltip: None,
+                        },
+                    );
+                }
+                BraceBlock::Container { members } => {
+                    self.subgraphs.push(Subgraph { id, nodes: members });
+                }
             }
-            if let Some(s) = attrs.get("shape") {
-                shape = shape_from_d2(s);
-            }
+            return Ok(());
         }
 
         let text = label.unwrap_or_else(|| id.clone());
@@ -307,12 +323,35 @@ impl<'a> Parser<'a> {
             Node {
                 id,
                 text,
-                shape,
+                shape: NodeShape::Rect,
                 href: None,
                 tooltip: None,
             },
         );
         Ok(())
+    }
+
+    fn push_edge(
+        &mut self,
+        left: String,
+        op: &str,
+        right: String,
+        label: Option<String>,
+        dashed: bool,
+    ) {
+        let style = if dashed || op == "--" {
+            EdgeStyle::Dashed
+        } else {
+            EdgeStyle::Arrow
+        };
+        self.ensure_node(&left, &left);
+        self.ensure_node(&right, &right);
+        self.edges.push(Edge {
+            from: left,
+            to: right,
+            label: label.unwrap_or_default(),
+            style,
+        });
     }
 
     fn try_parse_connection(
@@ -343,12 +382,20 @@ impl<'a> Parser<'a> {
                 self.skip_ws_and_comments();
             }
             if self.peek_char() == Some('{') {
-                let attrs = self.read_block()?;
-                if let Some(l) = attrs.get("label") {
-                    label = Some(unquote(l));
-                }
-                if attrs.keys().any(|k| k.contains("stroke-dash")) {
-                    dashed = true;
+                match self.read_brace_block()? {
+                    BraceBlock::Attrs(attrs) => {
+                        if let Some(l) = attrs.get("label") {
+                            label = Some(unquote(l));
+                        }
+                        if attrs.keys().any(|k| k.contains("stroke-dash")) {
+                            dashed = true;
+                        }
+                    }
+                    BraceBlock::Container { .. } => {
+                        return Err(IrError::from(
+                            "D2: edge style block cannot contain nested containers",
+                        ));
+                    }
                 }
             }
         }
@@ -382,39 +429,105 @@ impl<'a> Parser<'a> {
         });
     }
 
-    fn read_block(&mut self) -> Result<HashMap<String, String>, IrError> {
+    fn read_brace_block(&mut self) -> Result<BraceBlock, IrError> {
         self.expect_char('{')?;
         let mut attrs = HashMap::new();
+        let mut members = Vec::new();
+        let mut saw_member = false;
+
         loop {
             self.skip_ws_and_comments();
             if self.peek_char() == Some('}') {
                 self.advance();
                 break;
             }
-            let key = self.read_attr_key()?;
-            self.skip_ws_and_comments();
-            self.expect_char(':')?;
-            self.skip_ws_and_comments();
-            let value = self.read_attr_value()?;
-            attrs.insert(key, value);
-            self.skip_ws_and_comments();
-        }
-        Ok(attrs)
-    }
 
-    fn read_attr_key(&mut self) -> Result<String, IrError> {
-        let start = self.pos;
-        while let Some(c) = self.peek_char() {
-            if c.is_alphanumeric() || c == '_' || c == '.' || c == '-' {
+            let checkpoint = self.pos;
+            if let Some((left, op, right, label, dashed)) = self.try_parse_connection()? {
+                self.push_edge(left.clone(), op, right.clone(), label, dashed);
+                if !members.contains(&left) {
+                    members.push(left);
+                }
+                if !members.contains(&right) {
+                    members.push(right);
+                }
+                saw_member = true;
+                continue;
+            }
+            self.pos = checkpoint;
+
+            let key = self.read_id()?;
+            self.skip_ws_and_comments();
+            if self.peek_char() == Some(':') {
                 self.advance();
+                self.skip_ws_and_comments();
+                if self.peek_char() == Some('{') {
+                    saw_member = true;
+                    match self.read_brace_block()? {
+                        BraceBlock::Attrs(nested_attrs) => {
+                            let mut shape = NodeShape::Rect;
+                            let mut text = key.clone();
+                            if let Some(l) = nested_attrs.get("label") {
+                                text = unquote(l);
+                            }
+                            if let Some(s) = nested_attrs.get("shape") {
+                                shape = shape_from_d2(s);
+                            }
+                            self.nodes.insert(
+                                key.clone(),
+                                Node {
+                                    id: key.clone(),
+                                    text,
+                                    shape,
+                                    href: None,
+                                    tooltip: None,
+                                },
+                            );
+                            if !members.contains(&key) {
+                                members.push(key);
+                            }
+                        }
+                        BraceBlock::Container { members: nested } => {
+                            self.subgraphs.push(Subgraph {
+                                id: key,
+                                nodes: nested,
+                            });
+                        }
+                    }
+                } else if is_d2_attr_key(&key) {
+                    let value = self.read_attr_value()?;
+                    attrs.insert(key, value);
+                } else {
+                    saw_member = true;
+                    let text = unquote(&self.read_attr_value()?);
+                    self.nodes.insert(
+                        key.clone(),
+                        Node {
+                            id: key.clone(),
+                            text,
+                            shape: NodeShape::Rect,
+                            href: None,
+                            tooltip: None,
+                        },
+                    );
+                    if !members.contains(&key) {
+                        members.push(key);
+                    }
+                }
             } else {
-                break;
+                saw_member = true;
+                self.ensure_node(&key, &key);
+                if !members.contains(&key) {
+                    members.push(key);
+                }
             }
         }
-        if self.pos == start {
-            return Err(IrError::from("D2: expected attribute key"));
+
+        if saw_member {
+            Ok(BraceBlock::Container { members })
+        } else {
+            Ok(BraceBlock::Attrs(attrs))
         }
-        Ok(self.input[start..self.pos].to_string())
     }
 
     fn read_attr_value(&mut self) -> Result<String, IrError> {
@@ -676,5 +789,67 @@ a -> b: link
         assert_eq!(d.edges.len(), 1);
         assert_eq!(d.edges[0].style, EdgeStyle::Dashed);
         assert_eq!(d.edges[0].label, "retry");
+    }
+
+    #[test]
+    fn parse_container_as_subgraph() {
+        let src = r#"
+direction: down
+a: Alpha
+b: Beta
+c: Gamma
+
+group: {
+  a
+  b
+}
+
+a -> b
+b -> c
+"#;
+        let d = parse(src).unwrap();
+        assert_eq!(d.subgraphs.len(), 1);
+        assert_eq!(d.subgraphs[0].id, "group");
+        assert!(d.subgraphs[0].nodes.contains(&"a".into()));
+        assert!(d.subgraphs[0].nodes.contains(&"b".into()));
+        assert_eq!(d.nodes.len(), 3);
+        assert_eq!(d.edges.len(), 2);
+    }
+
+    #[test]
+    fn export_import_preserves_subgraphs() {
+        let src = "graph TD\n  subgraph cluster\n    A[One] --> B[Two]\n  end\n";
+        let doc1 = crate::formats::import_str(src, crate::formats::Format::Mermaid).unwrap();
+        let out = export_document(&doc1).unwrap();
+        assert!(out.contains("cluster: {") || out.contains("cluster:{"));
+        let doc2 = parse_to_document(&out).unwrap();
+        let IrDiagram::Flowchart(d1) = doc1.primary().unwrap() else {
+            panic!("expected flowchart");
+        };
+        let IrDiagram::Flowchart(d2) = doc2.primary().unwrap() else {
+            panic!("expected flowchart");
+        };
+        assert_eq!(d1.subgraphs.len(), d2.subgraphs.len());
+        assert_eq!(d1.subgraphs[0].nodes.len(), d2.subgraphs[0].nodes.len());
+    }
+
+    #[test]
+    fn nested_container_becomes_separate_subgraph() {
+        let src = r#"
+outer: {
+  a
+  inner: {
+    b
+  }
+}
+a -> b
+"#;
+        let d = parse(src).unwrap();
+        assert_eq!(d.subgraphs.len(), 2);
+        let outer = d.subgraphs.iter().find(|s| s.id == "outer").unwrap();
+        let inner = d.subgraphs.iter().find(|s| s.id == "inner").unwrap();
+        assert!(outer.nodes.contains(&"a".into()));
+        assert!(!outer.nodes.contains(&"b".into()));
+        assert!(inner.nodes.contains(&"b".into()));
     }
 }

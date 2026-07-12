@@ -1,7 +1,8 @@
 //! Graphviz DOT Compatibility adapter (digraph subset → flowchart IR).
 
-use crate::diagram::{Diagram, Edge, EdgeStyle, Node, NodeShape, Subgraph};
+use crate::diagram::{Diagram, Edge, EdgeStyle, Node, NodeShape, NodeStyle, Subgraph};
 use crate::ir::{Document, IrError};
+use std::collections::HashMap;
 
 /// Whether source looks like Graphviz DOT (not Mermaid `graph TD`).
 pub fn is_dot(source: &str) -> bool {
@@ -91,7 +92,7 @@ fn export_flowchart(d: &Diagram, name: &str) -> String {
     for node in &d.nodes {
         out.push_str("    ");
         out.push_str(&crate::diagram::format_id(&node.id));
-        let attrs = node_attrs(node);
+        let attrs = node_attrs(node, &d.styles);
         if attrs.is_empty() {
             out.push_str(";\n");
         } else {
@@ -132,7 +133,7 @@ fn export_flowchart(d: &Diagram, name: &str) -> String {
     out
 }
 
-fn node_attrs(node: &Node) -> String {
+fn node_attrs(node: &Node, styles: &[NodeStyle]) -> String {
     let mut parts = Vec::new();
     if node.text != node.id {
         parts.push(format!("label={}", dot_quote(&node.text)));
@@ -140,7 +141,33 @@ fn node_attrs(node: &Node) -> String {
     if let Some(shape) = shape_to_dot(node.shape) {
         parts.push(format!("shape={shape}"));
     }
+    if let Some(href) = &node.href {
+        parts.push(format!("URL={}", dot_quote(href)));
+    }
+    if let Some(style) = styles.iter().find(|s| s.node_id == node.id) {
+        let props = parse_style_props(&style.properties);
+        if let Some(fill) = props.get("fill") {
+            parts.push(format!("fillcolor={}", dot_quote(fill)));
+            parts.push("style=filled".into());
+        }
+        if let Some(stroke) = props.get("stroke") {
+            parts.push(format!("color={}", dot_quote(stroke)));
+        }
+        if let Some(font) = props.get("color") {
+            parts.push(format!("fontcolor={}", dot_quote(font)));
+        }
+    }
     parts.join(", ")
+}
+
+fn parse_style_props(s: &str) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    for part in s.split(',') {
+        if let Some((k, v)) = part.trim().split_once(':') {
+            map.insert(k.trim().to_string(), v.trim().to_string());
+        }
+    }
+    map
 }
 
 fn edge_attrs(edge: &Edge) -> String {
@@ -193,6 +220,7 @@ struct Parser<'a> {
     edges: Vec<Edge>,
     subgraphs: Vec<Subgraph>,
     subgraph_stack: Vec<String>,
+    styles: Vec<NodeStyle>,
 }
 
 impl<'a> Parser<'a> {
@@ -206,6 +234,7 @@ impl<'a> Parser<'a> {
             edges: Vec::new(),
             subgraphs: Vec::new(),
             subgraph_stack: Vec::new(),
+            styles: Vec::new(),
         }
     }
 
@@ -241,7 +270,7 @@ impl<'a> Parser<'a> {
             nodes: std::mem::take(&mut self.nodes),
             edges: std::mem::take(&mut self.edges),
             subgraphs: std::mem::take(&mut self.subgraphs),
-            styles: Vec::new(),
+            styles: std::mem::take(&mut self.styles),
             class_defs: Vec::new(),
             class_applies: Vec::new(),
             link_styles: Vec::new(),
@@ -346,25 +375,28 @@ impl<'a> Parser<'a> {
     }
 
     fn ensure_node(&mut self, id: &str, attrs: &Attrs) -> Result<(), IrError> {
-        if self.nodes.iter().any(|n| n.id == id) {
+        if let Some(n) = self.nodes.iter_mut().find(|n| n.id == id) {
             if let Some(text) = &attrs.label {
-                if let Some(n) = self.nodes.iter_mut().find(|n| n.id == id) {
-                    n.text = text.clone();
-                    if let Some(shape) = attrs.shape {
-                        n.shape = shape;
-                    }
-                }
+                n.text = text.clone();
             }
+            if let Some(shape) = attrs.shape {
+                n.shape = shape;
+            }
+            if let Some(href) = &attrs.href {
+                n.href = Some(href.clone());
+            }
+            self.apply_node_style(id, attrs);
             return Ok(());
         }
         let node = Node {
             id: id.to_string(),
             text: attrs.label.clone().unwrap_or_else(|| id.to_string()),
             shape: attrs.shape.unwrap_or(NodeShape::Rect),
-            href: None,
+            href: attrs.href.clone(),
             tooltip: None,
         };
         self.nodes.push(node);
+        self.apply_node_style(id, attrs);
         if let Some(sg_id) = self.subgraph_stack.last() {
             if let Some(sg) = self.subgraphs.iter_mut().find(|s| &s.id == sg_id) {
                 if !sg.nodes.contains(&id.to_string()) {
@@ -373,6 +405,31 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(())
+    }
+
+    fn apply_node_style(&mut self, id: &str, attrs: &Attrs) {
+        let mut parts = Vec::new();
+        if let Some(fill) = &attrs.fillcolor {
+            parts.push(format!("fill:{fill}"));
+        }
+        if let Some(stroke) = &attrs.color {
+            parts.push(format!("stroke:{stroke}"));
+        }
+        if let Some(font) = &attrs.fontcolor {
+            parts.push(format!("color:{font}"));
+        }
+        if parts.is_empty() {
+            return;
+        }
+        let properties = parts.join(",");
+        if let Some(existing) = self.styles.iter_mut().find(|s| s.node_id == id) {
+            existing.properties = properties;
+        } else {
+            self.styles.push(NodeStyle {
+                node_id: id.to_string(),
+                properties,
+            });
+        }
     }
 
     fn add_edge(&mut self, from: &str, to: &str, attrs: &Attrs) -> Result<(), IrError> {
@@ -611,6 +668,10 @@ struct Attrs {
     label: Option<String>,
     shape: Option<NodeShape>,
     edge_style: Option<EdgeStyle>,
+    href: Option<String>,
+    fillcolor: Option<String>,
+    color: Option<String>,
+    fontcolor: Option<String>,
 }
 
 impl Attrs {
@@ -625,6 +686,10 @@ impl Attrs {
                     self.edge_style = Some(EdgeStyle::Thick);
                 }
             }
+            "url" | "href" => self.href = Some(value.to_string()),
+            "fillcolor" => self.fillcolor = Some(value.to_string()),
+            "color" => self.color = Some(value.to_string()),
+            "fontcolor" => self.fontcolor = Some(value.to_string()),
             _ => {}
         }
     }
@@ -774,5 +839,40 @@ mod tests {
         assert_eq!(d1.edges.len(), d2.edges.len());
         assert_eq!(d1.edges[0].label, d2.edges[0].label);
         assert_eq!(d1.nodes[1].shape, d2.nodes[1].shape);
+    }
+
+    #[test]
+    fn parse_fillcolor_and_url() {
+        let d = parse(
+            r##"digraph G {
+            A [label="Start", fillcolor="#ffcccc", color="#333333", fontcolor="#111111", URL="https://example.com"];
+            B [label="End"];
+            A -> B;
+        }"##,
+        )
+        .unwrap();
+        let a = d.nodes.iter().find(|n| n.id == "A").unwrap();
+        assert_eq!(a.href.as_deref(), Some("https://example.com"));
+        assert_eq!(d.styles.len(), 1);
+        assert!(d.styles[0].properties.contains("fill:#ffcccc"));
+        assert!(d.styles[0].properties.contains("stroke:#333333"));
+        assert!(d.styles[0].properties.contains("color:#111111"));
+    }
+
+    #[test]
+    fn export_styles_and_href() {
+        let mut d = parse(r#"digraph G { A [label="A"]; B; A -> B; }"#).unwrap();
+        d.nodes[0].href = Some("https://example.com".into());
+        d.styles.push(NodeStyle {
+            node_id: "A".into(),
+            properties: "fill:#eee,stroke:#000,color:#111".into(),
+        });
+        let doc = Document::single(crate::ir::Diagram::Flowchart(d));
+        let out = export_document(&doc).unwrap();
+        assert!(out.contains("URL=\"https://example.com\""));
+        assert!(out.contains("fillcolor=\"#eee\""));
+        assert!(out.contains("style=filled"));
+        assert!(out.contains("color=\"#000\""));
+        assert!(out.contains("fontcolor=\"#111\""));
     }
 }

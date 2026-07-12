@@ -67,7 +67,7 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 | Structural analysis API | Limited | Limited |
 | Docs CI without heavy runtimes | mmdc heavy | Docker/Java common |
 
-Prioritize next: deeper DOT/D2 subsets → Wasm embed / vector PDF.
+Prioritize next: Wasm embed / vector PDF; further DOT/D2 attribute surface as needed.
 
 ## Audit follow-ups (done)
 
@@ -76,3 +76,4 @@ Prioritize next: deeper DOT/D2 subsets → Wasm embed / vector PDF.
 - [x] Integration roundtrips assert notes/fragments/stereotypes/cardinality/milestones
 - [x] Class mmd↔puml interchange test; analyze cardinality/stereotype/milestone keys
 - [x] SPEC kind list + MCP format docs sync
+- [x] Deeper DOT/D2: D2 container↔subgraph roundtrip; DOT fillcolor/color/fontcolor/URL

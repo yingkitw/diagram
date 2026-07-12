@@ -114,15 +114,17 @@ Mermaid remains the primary authored Format. Syntax below is Compatibility cover
 
 ## Graphviz DOT Compatibility (subset)
 
-- `digraph` / `graph`, `rankdir`, node `[label=, shape=]`, edges `->` / `--`, chained edges, `subgraph`
+- `digraph` / `graph`, `rankdir`, node `[label=, shape=, fillcolor=, color=, fontcolor=, URL=/href=]`, edges `->` / `--`, chained edges, `subgraph`
+- Node colors map to Mermaid-style `style` properties (`fill` / `stroke` / `color`); `URL`/`href` maps to node hyperlinks
 - Import and export map to flowchart IR
 - Not yet: ports, HTML labels, full Graphviz attribute surface
 
 ## D2 Compatibility (subset)
 
 - `direction`, node `label` / `shape`, connections `->` / `<-` / `--` / `<->`, edge labels, dashed edges via `style.stroke-dash`
-- Import and export map to flowchart IR (flat graphs; containers/subgraphs export as D2 blocks)
-- Not yet: sequence/class shapes, nested container import, themes, icons, layout engine options
+- Containers (`id: { members… }`) import/export as flowchart subgraphs (nested containers become sibling subgraphs)
+- Import and export map to flowchart IR
+- Not yet: sequence/class shapes, themes, icons, layout engine options
 
 ## Lossiness reporting
 
@@ -130,8 +132,8 @@ Mermaid remains the primary authored Format. Syntax below is Compatibility cover
 
 - JSON IR: lossless
 - Mermaid: warns on `href`/`tooltip`, multi-diagram marker convention
-- DOT: flowchart only; warns on skipped kinds, styles/classDefs, href/tooltip
-- D2: flowchart only; warns on skipped kinds, styles/classDefs, href/tooltip, subgraph flattening
+- DOT: flowchart only; warns on skipped kinds, tooltips, classDefs (`URL` and fill/stroke styles are exported)
+- D2: flowchart only; warns on skipped kinds, styles/classDefs, href/tooltip (containers round-trip as subgraphs)
 - PlantUML export: sequence/class only; flowchart/gantt omitted
 
 Blocked exports return an error with the first warning message.

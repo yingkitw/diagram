@@ -207,15 +207,6 @@ fn diagram_d2_warnings(index: usize, d: &Diagram) -> Vec<LossWarning> {
                     fc.class_defs.len() + fc.class_applies.len(),
                 ));
             }
-            if !fc.subgraphs.is_empty() {
-                out.push(warn(
-                    index,
-                    &kind,
-                    "flowchart.subgraphs",
-                    "subgraph nesting is exported as flat D2 containers (connections may need manual adjustment)",
-                    fc.subgraphs.len(),
-                ));
-            }
             out
         }
         Diagram::Sequence(_) | Diagram::Class(_) | Diagram::Gantt(_) | Diagram::State(_) | Diagram::Er(_) => Vec::new(),
@@ -339,16 +330,6 @@ fn diagram_dot_warnings(index: usize, d: &Diagram) -> Vec<LossWarning> {
     match d {
         Diagram::Flowchart(fc) => {
             let mut out = Vec::new();
-            let hrefs = fc.nodes.iter().filter(|n| n.href.is_some()).count();
-            if hrefs > 0 {
-                out.push(warn(
-                    index,
-                    &kind,
-                    "flowchart.node.href",
-                    "node hyperlink (href) is not written to DOT export",
-                    hrefs,
-                ));
-            }
             let tooltips = fc.nodes.iter().filter(|n| n.tooltip.is_some()).count();
             if tooltips > 0 {
                 out.push(warn(
@@ -357,15 +338,6 @@ fn diagram_dot_warnings(index: usize, d: &Diagram) -> Vec<LossWarning> {
                     "flowchart.node.tooltip",
                     "node tooltip is not written to DOT export",
                     tooltips,
-                ));
-            }
-            if !fc.styles.is_empty() {
-                out.push(warn(
-                    index,
-                    &kind,
-                    "flowchart.styles",
-                    "per-node style properties are not written to DOT export",
-                    fc.styles.len(),
                 ));
             }
             if !fc.class_defs.is_empty() || !fc.class_applies.is_empty() {

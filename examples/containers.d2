@@ -1,0 +1,21 @@
+# D2 containers map to flowchart subgraphs
+direction: down
+
+ingest: Ingest
+parse: Parse
+render: Render
+ship: Ship
+
+pipeline: {
+  ingest
+  parse
+}
+
+output: {
+  render
+  ship
+}
+
+ingest -> parse
+parse -> render
+render -> ship

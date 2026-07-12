@@ -118,7 +118,7 @@ Under `examples/`:
 | `simple-flowchart.mmd`, `shapes.mmd`, `subgraphs.mmd`, … | Mermaid flowchart |
 | `sequence.mmd`, `class.mmd`, `gantt.mmd`, `state.mmd`, `er.mmd` | Mermaid sequence / class / gantt / state / er |
 | `sequence.puml`, `class.puml`, `activity.puml` | PlantUML |
-| `simple-flowchart.d2` | D2 |
+| `simple-flowchart.d2`, `containers.d2` | D2 (flat + containers/subgraphs) |
 | `simple-flowchart.dot` | Graphviz DOT |
 | `multi-document.json` | Multi-diagram JSON IR |
 | `doc-with-diagrams.md` | Markdown pipeline demo |

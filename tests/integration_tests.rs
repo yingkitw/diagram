@@ -616,6 +616,30 @@ fn test_d2_example_parse_and_render() {
 }
 
 #[test]
+fn test_d2_containers_example_parse_and_render() {
+    let path = examples_dir().join("containers.d2");
+    let doc = diagram::ir::load_path(path.to_str().unwrap()).unwrap();
+    let diagram = match doc.primary().unwrap() {
+        diagram::ir::Diagram::Flowchart(d) => d,
+        _ => panic!("expected flowchart"),
+    };
+    assert_eq!(diagram.subgraphs.len(), 2);
+    assert!(diagram.subgraphs.iter().any(|s| s.id == "pipeline"));
+    assert!(diagram.subgraphs.iter().any(|s| s.id == "output"));
+    let out = diagram::formats::export_str(&doc, diagram::formats::Format::D2).unwrap();
+    let again = diagram::formats::import_str(&out, diagram::formats::Format::D2).unwrap();
+    let again_fc = match again.primary().unwrap() {
+        diagram::ir::Diagram::Flowchart(d) => d,
+        _ => panic!("expected flowchart"),
+    };
+    assert_eq!(again_fc.subgraphs.len(), 2);
+    let svg = diagram::preview::render_file(path.to_str().unwrap(), diagram::renderer::Theme::Light)
+        .unwrap();
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("Ingest") || svg.contains("ingest"));
+}
+
+#[test]
 fn test_multi_document_composite_render() {
     let path = examples_dir().join("multi-document.json");
     let doc = diagram::ir::load_path(path.to_str().unwrap()).unwrap();
