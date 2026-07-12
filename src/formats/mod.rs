@@ -38,6 +38,22 @@ impl Format {
             Self::PlantUml => "plantuml",
         }
     }
+
+    /// Infer format from an output path extension (defaults to Mermaid).
+    pub fn from_output_path(path: &str) -> Self {
+        let lower = path.to_lowercase();
+        if lower.ends_with(".json") {
+            Self::JsonIr
+        } else if lower.ends_with(".dot") || lower.ends_with(".gv") {
+            Self::Dot
+        } else if lower.ends_with(".d2") {
+            Self::D2
+        } else if lower.ends_with(".puml") || lower.ends_with(".plantuml") {
+            Self::PlantUml
+        } else {
+            Self::Mermaid
+        }
+    }
 }
 
 /// Detect format from content and optional path extension.
@@ -111,20 +127,7 @@ pub fn import_path(path: &str, from: Option<Format>) -> Result<(Document, Format
 
 /// Export a Document to a path (format from `to` or destination extension).
 pub fn export_path(doc: &Document, path: &str, to: Option<Format>) -> Result<Format, IrError> {
-    let format = to.unwrap_or_else(|| {
-        let lower = path.to_lowercase();
-        if lower.ends_with(".json") {
-            Format::JsonIr
-        } else if lower.ends_with(".dot") || lower.ends_with(".gv") {
-            Format::Dot
-        } else if lower.ends_with(".d2") {
-            Format::D2
-        } else if lower.ends_with(".puml") || lower.ends_with(".plantuml") {
-            Format::PlantUml
-        } else {
-            Format::Mermaid
-        }
-    });
+    let format = to.unwrap_or_else(|| Format::from_output_path(path));
     let loss = crate::lossiness::report(doc, format);
     if !loss.export_supported {
         return Err(IrError::from(
@@ -145,20 +148,7 @@ pub fn export_with_report(
     path: &str,
     to: Option<Format>,
 ) -> Result<(Format, crate::lossiness::LossinessReport), IrError> {
-    let format = to.unwrap_or_else(|| {
-        let lower = path.to_lowercase();
-        if lower.ends_with(".json") {
-            Format::JsonIr
-        } else if lower.ends_with(".dot") || lower.ends_with(".gv") {
-            Format::Dot
-        } else if lower.ends_with(".d2") {
-            Format::D2
-        } else if lower.ends_with(".puml") || lower.ends_with(".plantuml") {
-            Format::PlantUml
-        } else {
-            Format::Mermaid
-        }
-    });
+    let format = to.unwrap_or_else(|| Format::from_output_path(path));
     let report = crate::lossiness::report(doc, format);
     if !report.export_supported {
         return Err(IrError::from(

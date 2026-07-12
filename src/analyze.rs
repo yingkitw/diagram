@@ -409,6 +409,7 @@ pub struct ClassDiff {
     pub removed_relations: Vec<crate::class::Relation>,
     pub added_notes: usize,
     pub removed_notes: usize,
+    pub changed_stereotypes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -652,7 +653,15 @@ fn diff_class(
         .collect();
 
     let relation_key = |r: &crate::class::Relation| {
-        format!("{}|{}|{:?}|{}", r.from, r.to, r.kind, r.label)
+        format!(
+            "{}|{}|{:?}|{}|{:?}|{:?}",
+            r.from,
+            r.to,
+            r.kind,
+            r.label,
+            r.from_card,
+            r.to_card
+        )
     };
 
     let left_rel: HashSet<String> = left.relations.iter().map(relation_key).collect();
@@ -671,6 +680,22 @@ fn diff_class(
         .cloned()
         .collect();
 
+    let left_stereo: HashMap<&str, Option<&str>> = left
+        .classes
+        .iter()
+        .map(|c| (c.id.as_str(), c.stereotype.as_deref()))
+        .collect();
+    let changed_stereotypes: Vec<String> = right
+        .classes
+        .iter()
+        .filter(|c| {
+            left_stereo
+                .get(c.id.as_str())
+                .is_some_and(|s| *s != c.stereotype.as_deref())
+        })
+        .map(|c| c.id.clone())
+        .collect();
+
     ClassDiff {
         added_classes,
         removed_classes,
@@ -678,6 +703,7 @@ fn diff_class(
         removed_relations,
         added_notes: right.notes.len().saturating_sub(left.notes.len()),
         removed_notes: left.notes.len().saturating_sub(right.notes.len()),
+        changed_stereotypes,
     }
 }
 
@@ -688,6 +714,7 @@ fn class_unchanged(d: &ClassDiff) -> bool {
         && d.removed_relations.is_empty()
         && d.added_notes == 0
         && d.removed_notes == 0
+        && d.changed_stereotypes.is_empty()
 }
 
 fn diff_gantt(
@@ -698,9 +725,10 @@ fn diff_gantt(
 
     let task_key = |t: &crate::gantt::GanttTask| {
         format!(
-            "{}|{}",
+            "{}|{}|{}",
             t.section,
-            t.id.as_deref().unwrap_or(t.name.as_str())
+            t.id.as_deref().unwrap_or(t.name.as_str()),
+            if t.milestone { "milestone" } else { "task" }
         )
     };
 

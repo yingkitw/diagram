@@ -20,7 +20,7 @@
 }
 ```
 
-`kind` values: `flowchart`, `sequence`, `class`, `gantt`. Multi-diagram `diagrams[]` is supported for JSON IR import, composite render, per-index render (`--index`), output-dir batch render, and Mermaid export with `%% diagram N:` markers.
+`kind` values: `flowchart`, `sequence`, `class`, `gantt`, `state`, `er`. Multi-diagram `diagrams[]` is supported for JSON IR import, composite render, per-index render (`--index`), output-dir batch render, and Mermaid export with `%% diagram N:` markers.
 
 ## Platform contracts
 
@@ -192,22 +192,24 @@ Commands:
 | `render_pdf` | path, output, theme? | Status JSON |
 | `process_markdown` | path, output_dir, output, format?, theme? | Status JSON |
 | `diff_diagram` | left, right | `DocumentDiff` JSON (per-diagram entries, summary) |
-| `merge_diagram` | left, right, output | Status JSON |
-| `add_node` | path, id, text, shape? | Status JSON |
-| `remove_node` | path, id | Status JSON |
-| `update_node` | path, id, text?, shape? | Status JSON |
-| `add_edge` | path, from, to, label?, style? | Status JSON |
-| `remove_edge` | path, from, to | Status JSON |
-| `update_edge` | path, from, to, label?, style? | Status JSON |
-| `get_mermaid` | path | Mermaid source |
-| `set_mermaid` | path, source | Status JSON |
-| `list_nodes` | path | Node list JSON |
-| `list_edges` | path | Edge list JSON |
-| `get_node` | path, id | Node JSON |
-| `get_edge` | path, from, to | Edge JSON |
-| `validate_diagram` | path | Validation JSON |
-| `add_nodes` | path, items[] | Status JSON |
-| `add_edges` | path, items[] | Status JSON |
+| `merge_diagram` | left, right, output | Status JSON (**flowchart-only**) |
+| `add_node` | path, id, text, shape? | Status JSON (**flowchart-only**) |
+| `remove_node` | path, id | Status JSON (**flowchart-only**) |
+| `update_node` | path, id, text?, shape? | Status JSON (**flowchart-only**) |
+| `add_edge` | path, from, to, label?, style? | Status JSON (**flowchart-only**) |
+| `remove_edge` | path, from, to | Status JSON (**flowchart-only**) |
+| `update_edge` | path, from, to, label?, style? | Status JSON (**flowchart-only**) |
+| `get_mermaid` | path | Mermaid Compatibility source (any Format via IR) |
+| `set_mermaid` | path, source | Status JSON (validates parse before write) |
+| `list_nodes` | path | Node list JSON (**flowchart-only**) |
+| `list_edges` | path | Edge list JSON (**flowchart-only**) |
+| `get_node` | path, id | Node JSON (**flowchart-only**) |
+| `get_edge` | path, from, to | Edge JSON (**flowchart-only**) |
+| `validate_diagram` | path | Validation JSON (flowchart structural; other kinds parse-ok) |
+| `add_nodes` | path, items[] | Status JSON (**flowchart-only**) |
+| `add_edges` | path, items[] | Status JSON (**flowchart-only**) |
+
+Import/export `from`/`to`: `mermaid`, `json`, `dot`, `d2`, `plantuml`.
 
 ## Data Model (flowchart IR excerpt)
 
@@ -257,7 +259,7 @@ Canonical wrapper: `Document { version, diagrams: Vec<Diagram> }` where `Diagram
 }
 ```
 
-Per-kind `detail`: flowchart (`added_nodes` / `removed_nodes` / `modified_nodes` / edges / `rankdir_changed`), sequence (participants, messages), class (classes, relations), gantt (title, tasks). Entries may be `added`, `removed`, `kind_changed`, `unchanged`, or `changed`. `merge` remains flowchart-only.
+Per-kind `detail`: flowchart (`added_nodes` / `removed_nodes` / `modified_nodes` / edges / `rankdir_changed`), sequence (participants, messages, notes, fragments), class (classes, relations, notes, stereotypes, cardinality), gantt (title, tasks incl. milestones), state/er. Entries may be `added`, `removed`, `kind_changed`, `unchanged`, or `changed`. `merge` remains flowchart-only.
 
 ## Library Interface
 
@@ -267,6 +269,7 @@ pub mod class;
 pub mod cli;
 pub mod composite;
 pub mod diagram;
+pub mod er;
 pub mod formats;
 pub mod gantt;
 pub mod generate;
@@ -281,6 +284,7 @@ pub mod png;
 pub mod preview;
 pub mod renderer;
 pub mod sequence;
+pub mod state;
 ```
 
 ## Preview Server

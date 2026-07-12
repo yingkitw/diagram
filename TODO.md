@@ -68,3 +68,11 @@ Competitive edge vs Mermaid.js / PlantUML: native binary, MCP-first agents, anal
 | Docs CI without heavy runtimes | mmdc heavy | Docker/Java common |
 
 Prioritize next: deeper DOT/D2 subsets → Wasm embed / vector PDF.
+
+## Audit follow-ups (done)
+
+- [x] IR-aware flowchart mutate gate (`load_flowchart`) + kind-aware validate
+- [x] MCP D2 in schemars/errors; get/set Mermaid via IR
+- [x] Integration roundtrips assert notes/fragments/stereotypes/cardinality/milestones
+- [x] Class mmd↔puml interchange test; analyze cardinality/stereotype/milestone keys
+- [x] SPEC kind list + MCP format docs sync

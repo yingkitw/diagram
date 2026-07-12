@@ -85,6 +85,18 @@ fn test_all_examples_roundtrip() {
                     "message count mismatch for {:?}",
                     path
                 );
+                assert_eq!(
+                    diagram.notes.len(),
+                    reparsed.notes.len(),
+                    "note count mismatch for {:?}",
+                    path
+                );
+                assert_eq!(
+                    diagram.fragments.len(),
+                    reparsed.fragments.len(),
+                    "fragment count mismatch for {:?}",
+                    path
+                );
             } else if diagram::class::is_class(&source) {
                 let diagram = diagram::class::parse(&source).unwrap();
                 let output = diagram.to_mermaid();
@@ -101,6 +113,20 @@ fn test_all_examples_roundtrip() {
                     "relation count mismatch for {:?}",
                     path
                 );
+                assert_eq!(
+                    diagram.notes.len(),
+                    reparsed.notes.len(),
+                    "class note count mismatch for {:?}",
+                    path
+                );
+                for (a, b) in diagram.classes.iter().zip(reparsed.classes.iter()) {
+                    assert_eq!(a.stereotype, b.stereotype, "stereotype mismatch for {:?}", path);
+                    assert_eq!(a.id, b.id, "class id mismatch for {:?}", path);
+                }
+                for (a, b) in diagram.relations.iter().zip(reparsed.relations.iter()) {
+                    assert_eq!(a.from_card, b.from_card, "from_card mismatch for {:?}", path);
+                    assert_eq!(a.to_card, b.to_card, "to_card mismatch for {:?}", path);
+                }
             } else if diagram::gantt::is_gantt(&source) {
                 let diagram = diagram::gantt::parse(&source).unwrap();
                 let output = diagram.to_mermaid();
@@ -109,6 +135,12 @@ fn test_all_examples_roundtrip() {
                     diagram.tasks.len(),
                     reparsed.tasks.len(),
                     "task count mismatch for {:?}",
+                    path
+                );
+                assert_eq!(
+                    diagram.tasks.iter().filter(|t| t.milestone).count(),
+                    reparsed.tasks.iter().filter(|t| t.milestone).count(),
+                    "milestone count mismatch for {:?}",
                     path
                 );
             } else if diagram::state::is_state(&source) {
@@ -414,12 +446,52 @@ fn test_class_example_parse_and_render() {
     let diagram = diagram::class::parse(&source).unwrap();
     assert!(diagram.classes.len() >= 3);
     assert!(diagram.relations.len() >= 2);
+    assert!(
+        diagram
+            .classes
+            .iter()
+            .any(|c| c.id == "Drawable" && c.stereotype.as_deref() == Some("interface"))
+    );
+    assert!(diagram.classes.iter().any(|c| c.id == "Stack~T~"));
+    assert!(!diagram.notes.is_empty());
+    assert!(
+        diagram
+            .relations
+            .iter()
+            .any(|r| r.from_card.as_deref() == Some("1") && r.to_card.as_deref() == Some("*"))
+    );
     let svg = diagram::class::render_svg(&diagram, diagram::renderer::Theme::Dark);
     assert!(svg.contains("<svg"));
     assert!(svg.contains("Animal"));
     assert!(svg.contains("+String name"));
     let roundtrip = diagram::class::parse(&diagram.to_mermaid()).unwrap();
     assert_eq!(roundtrip.classes.len(), diagram.classes.len());
+    assert_eq!(roundtrip.notes.len(), diagram.notes.len());
+}
+
+#[test]
+fn test_class_mmd_puml_interchange() {
+    let mmd_path = examples_dir().join("class.mmd");
+    let puml_path = examples_dir().join("class.puml");
+    let mmd_doc = diagram::ir::load_path(mmd_path.to_str().unwrap()).unwrap();
+    let puml_doc = diagram::ir::load_path(puml_path.to_str().unwrap()).unwrap();
+    let diagram::ir::Diagram::Class(mmd) = mmd_doc.primary().unwrap() else {
+        panic!("expected class from mmd");
+    };
+    let diagram::ir::Diagram::Class(puml) = puml_doc.primary().unwrap() else {
+        panic!("expected class from puml");
+    };
+    assert_eq!(mmd.classes.len(), puml.classes.len());
+    assert_eq!(mmd.relations.len(), puml.relations.len());
+    assert_eq!(mmd.notes.len(), puml.notes.len());
+    // Roundtrip: Mermaid → PlantUML → Mermaid preserves generics + notes
+    let exported = diagram::formats::export_str(&mmd_doc, diagram::formats::Format::PlantUml).unwrap();
+    let back = diagram::formats::import_str(&exported, diagram::formats::Format::PlantUml).unwrap();
+    let diagram::ir::Diagram::Class(again) = back.primary().unwrap() else {
+        panic!("expected class");
+    };
+    assert!(again.classes.iter().any(|c| c.id == "Stack~T~"));
+    assert_eq!(again.notes.len(), mmd.notes.len());
 }
 
 #[test]
@@ -441,10 +513,15 @@ fn test_gantt_example_parse_and_render() {
     assert!(diagram::gantt::is_gantt(&source));
     let diagram = diagram::gantt::parse(&source).unwrap();
     assert!(diagram.tasks.len() >= 3);
+    assert!(
+        diagram.tasks.iter().any(|t| t.milestone && t.name == "Launch"),
+        "expected Launch milestone"
+    );
     let svg = diagram::gantt::render_svg(&diagram, diagram::renderer::Theme::Dark);
     assert!(svg.contains("<svg"));
     assert!(svg.contains("Research"));
     assert!(svg.contains("Project Plan"));
+    assert!(svg.contains("<polygon"));
 }
 
 #[test]

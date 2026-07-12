@@ -1,5 +1,5 @@
 use clap::Parser;
-use crate::{diagram as dg, parser};
+use crate::diagram as dg;
 use crate::renderer::Theme;
 
 #[derive(Parser)]
@@ -273,10 +273,7 @@ impl Cli {
 }
 
 fn read_diagram(path: &str) -> anyhow::Result<dg::Diagram> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| anyhow::anyhow!("Failed to read '{}': {}", path, e))?;
-    parser::parse(&content)
-        .map_err(|e| anyhow::anyhow!("{}", e))
+    crate::ir::load_flowchart(path).map_err(|e| anyhow::anyhow!("{e}"))
 }
 
 fn write_diagram(path: &str, diagram: &dg::Diagram) -> anyhow::Result<()> {
@@ -550,12 +547,15 @@ fn cmd_remove_edge(path: &str, from: &str, to: &str) -> anyhow::Result<()> {
 }
 
 fn cmd_get_mermaid(path: &str) -> anyhow::Result<()> {
-    let diagram = read_diagram(path)?;
-    println!("{}", diagram.to_mermaid());
+    let doc = crate::ir::load_path(path).map_err(|e| anyhow::anyhow!("{e}"))?;
+    println!("{}", doc.to_mermaid().map_err(|e| anyhow::anyhow!("{e}"))?);
     Ok(())
 }
 
 fn cmd_set_mermaid(path: &str, source: &str) -> anyhow::Result<()> {
+    // Validate before write so we don't clobber with unparseable source.
+    crate::formats::import_str(source, crate::formats::detect(source, Some(path)))
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     std::fs::write(path, source)
         .map_err(|e| anyhow::anyhow!("Failed to write '{}': {}", path, e))?;
     println!("Wrote mermaid source to '{path}'");
@@ -580,13 +580,15 @@ fn cmd_list_edges(path: &str) -> anyhow::Result<()> {
 }
 
 fn cmd_validate(path: &str) -> anyhow::Result<()> {
-    let diagram = read_diagram(path)?;
-    let issues = diagram.validate();
-    if issues.is_empty() {
-        println!("Valid: no issues found");
+    let report = crate::ir::validate_path(path).map_err(|e| anyhow::anyhow!("{e}"))?;
+    if report.valid {
+        println!("Valid: {} — no issues found", report.kind);
+        if let Some(note) = &report.note {
+            println!("  note: {note}");
+        }
     } else {
-        println!("Found {} issue(s):", issues.len());
-        for issue in &issues {
+        println!("Found {} issue(s) in {}:", report.issues.len(), report.kind);
+        for issue in &report.issues {
             println!("  - {issue}");
         }
     }
@@ -619,7 +621,7 @@ fn cmd_merge(left: &str, right: &str, output: &str) -> anyhow::Result<()> {
     let right_diag = read_diagram(right)?;
     let merged = left_diag.merge(&right_diag);
     std::fs::write(output, merged.to_mermaid())?;
-    println!("Merged diagram written to {output}");
+    println!("Merged flowchart written to {output}");
     Ok(())
 }
 

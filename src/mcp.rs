@@ -6,11 +6,11 @@ use rmcp::{
 };
 use rmcp::service::{MaybeSendFuture, RequestContext, RoleServer};
 
-use crate::{diagram as dg, parser, renderer};
+use crate::{diagram as dg, renderer};
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct FilePath {
-    #[schemars(description = "Path to a diagram file (Mermaid or JSON IR)")]
+    #[schemars(description = "Path to a diagram file (Mermaid, JSON IR, DOT, D2, or PlantUML)")]
     path: String,
 }
 
@@ -26,7 +26,7 @@ struct CreateParams {
 struct LossinessParams {
     #[schemars(description = "Source diagram file path")]
     path: String,
-    #[schemars(description = "Target format: mermaid, json, dot, or plantuml")]
+    #[schemars(description = "Target format: mermaid, json, dot, d2, or plantuml")]
     to: Option<String>,
 }
 
@@ -60,17 +60,17 @@ struct ImportParams {
     path: String,
     #[schemars(description = "Output JSON IR file path")]
     output: String,
-    #[schemars(description = "Source format: mermaid or json (auto-detect if omitted)")]
+    #[schemars(description = "Source format: mermaid, json, dot, d2, or plantuml (auto-detect if omitted)")]
     from: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct ExportParams {
-    #[schemars(description = "Source diagram file path (Mermaid or JSON IR)")]
+    #[schemars(description = "Source diagram file path")]
     path: String,
     #[schemars(description = "Output file path")]
     output: String,
-    #[schemars(description = "Target format: mermaid or json (auto-detect if omitted)")]
+    #[schemars(description = "Target format: mermaid, json, dot, d2, or plantuml (auto-detect if omitted)")]
     to: Option<String>,
 }
 
@@ -207,12 +207,7 @@ struct BatchEdgeParams {
 }
 
 fn read_file(path: &str) -> Result<dg::Diagram, CallToolResult> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| CallToolResult::error(vec![ContentBlock::text(format!(
-            "Failed to read file '{}': {}",
-            path, e
-        ))]))?;
-    parser::parse(&content).map_err(|e| {
+    crate::ir::load_flowchart(path).map_err(|e| {
         CallToolResult::error(vec![ContentBlock::text(e.to_string())])
     })
 }
@@ -279,7 +274,7 @@ impl DiagramServer {
                 Some(f) => Some(f),
                 None => {
                     return CallToolResult::error(vec![ContentBlock::text(format!(
-                        "Invalid from format '{s}'. Use: mermaid, json, dot, plantuml"
+                        "Invalid from format '{s}'. Use: mermaid, json, dot, d2, plantuml"
                     ))]);
                 }
             },
@@ -309,7 +304,7 @@ impl DiagramServer {
                 Some(f) => Some(f),
                 None => {
                     return CallToolResult::error(vec![ContentBlock::text(format!(
-                        "Invalid to format '{s}'. Use: mermaid, json, dot, plantuml"
+                        "Invalid to format '{s}'. Use: mermaid, json, dot, d2, plantuml"
                     ))]);
                 }
             },
@@ -340,7 +335,7 @@ impl DiagramServer {
                 Some(f) => f,
                 None => {
                     return CallToolResult::error(vec![ContentBlock::text(format!(
-                        "Invalid format '{s}'. Use: mermaid, json, dot, plantuml"
+                        "Invalid format '{s}'. Use: mermaid, json, dot, d2, plantuml"
                     ))]);
                 }
             },
@@ -731,20 +726,28 @@ impl DiagramServer {
         }
     }
 
-    #[tool(description = "Get the raw mermaid source code from a file")]
+    #[tool(description = "Get Mermaid Compatibility source for a diagram file (any supported format)")]
     async fn get_mermaid(&self, Parameters(params): Parameters<FilePath>) -> CallToolResult {
-        let diagram = match read_file(&params.path) {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        CallToolResult::success(vec![ContentBlock::text(diagram.to_mermaid())])
+        match crate::ir::load_path(&params.path) {
+            Ok(doc) => match doc.to_mermaid() {
+                Ok(src) => CallToolResult::success(vec![ContentBlock::text(src)]),
+                Err(e) => CallToolResult::error(vec![ContentBlock::text(e)]),
+            },
+            Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
+        }
     }
 
-    #[tool(description = "Write raw mermaid source code directly to a file")]
+    #[tool(description = "Write diagram source to a file (validates parse first)")]
     async fn set_mermaid(
         &self,
         Parameters(params): Parameters<MermaidSourceParams>,
     ) -> CallToolResult {
+        if let Err(e) = crate::formats::import_str(
+            &params.source,
+            crate::formats::detect(&params.source, Some(&params.path)),
+        ) {
+            return CallToolResult::error(vec![ContentBlock::text(e.to_string())]);
+        }
         match std::fs::write(&params.path, &params.source) {
             Ok(_) => CallToolResult::success(vec![ContentBlock::text(
                 serde_json::json!({"status": "ok", "path": params.path}).to_string(),
@@ -807,18 +810,14 @@ impl DiagramServer {
         }
     }
 
-    #[tool(description = "Validate diagram for orphaned nodes, dangling edges, and cycles")]
+    #[tool(description = "Validate a diagram (flowchart: orphans/cycles; other kinds: parse check)")]
     async fn validate_diagram(&self, Parameters(params): Parameters<FilePath>) -> CallToolResult {
-        let diagram = match read_file(&params.path) {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        let issues = diagram.validate();
-        let json = serde_json::json!({
-            "valid": issues.is_empty(),
-            "issues": issues,
-        });
-        CallToolResult::success(vec![ContentBlock::text(json.to_string())])
+        match crate::ir::validate_path(&params.path) {
+            Ok(report) => CallToolResult::success(vec![ContentBlock::text(
+                serde_json::to_string_pretty(&report).unwrap_or_default(),
+            )]),
+            Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
+        }
     }
 
     #[tool(description = "List all edges in the diagram")]
@@ -872,7 +871,7 @@ impl DiagramServer {
         )])
     }
 
-    #[tool(description = "Merge two diagrams into one and write to a file")]
+    #[tool(description = "Merge two flowcharts into one and write to a file (flowchart-only)")]
     async fn merge_diagram(&self, Parameters(params): Parameters<MergeParams>) -> CallToolResult {
         let left = match read_file(&params.left) {
             Ok(d) => d,
@@ -885,7 +884,7 @@ impl DiagramServer {
         let merged = left.merge(&right);
         match std::fs::write(&params.output, merged.to_mermaid()) {
             Ok(_) => CallToolResult::success(vec![ContentBlock::text(format!(
-                "Merged diagram written to {}", params.output
+                "Merged flowchart written to {}", params.output
             ))]),
             Err(e) => CallToolResult::error(vec![ContentBlock::text(format!(
                 "Failed to write output file: {}", e
@@ -923,7 +922,7 @@ impl ServerHandler for DiagramServer {
                 .build(),
         )
         .with_instructions(
-            "Diagram platform MCP server: render, generate, analyze, and interchange diagrams. Mermaid-compatible today; IR-centric tools. Parse, validate, diff/merge, mutate flowcharts, and render SVG.",
+            "Diagram platform MCP server: render, generate, analyze, and interchange (Mermaid/DOT/D2/PlantUML/JSON IR). Node/edge mutate and merge are flowchart-only; validate/diff/render work across kinds.",
         )
     }
 

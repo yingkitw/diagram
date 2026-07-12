@@ -50,7 +50,10 @@ fn test_cli_validate_clean() {
     let path = tmp.to_str().unwrap();
     let (stdout, _, code) = run(&["validate", path]);
     assert_eq!(code, 0);
-    assert!(stdout.contains("Valid: no issues found"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("Valid:") && stdout.contains("no issues found"),
+        "stdout: {stdout}"
+    );
 }
 
 #[test]

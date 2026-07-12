@@ -365,6 +365,61 @@ pub fn load_path(path: &str) -> Result<Document, IrError> {
     crate::formats::import_str(&content, crate::formats::detect(&content, Some(path)))
 }
 
+/// Load a flowchart for node/edge mutation tools. Other kinds return a clear error.
+pub fn load_flowchart(path: &str) -> Result<crate::diagram::Diagram, IrError> {
+    let doc = load_path(path)?;
+    match doc.primary() {
+        Some(Diagram::Flowchart(d)) => Ok(d.clone()),
+        Some(other) => Err(IrError::from(format!(
+            "node/edge edit tools require a flowchart; got {} (use render/import/export/diff for other kinds)",
+            other.kind()
+        ))),
+        None => Err(IrError::from("empty document")),
+    }
+}
+
+/// Kind-aware validate: flowchart structural checks; other kinds confirm they parse.
+pub fn validate_path(path: &str) -> Result<ValidateReport, IrError> {
+    let doc = load_path(path)?;
+    let Some(primary) = doc.primary() else {
+        return Ok(ValidateReport {
+            kind: "empty".into(),
+            valid: true,
+            issues: Vec::new(),
+            note: Some("empty document".into()),
+        });
+    };
+    let kind = primary.kind().to_string();
+    match primary {
+        Diagram::Flowchart(d) => {
+            let issues = d.validate();
+            Ok(ValidateReport {
+                kind,
+                valid: issues.is_empty(),
+                issues,
+                note: None,
+            })
+        }
+        _ => Ok(ValidateReport {
+            kind,
+            valid: true,
+            issues: Vec::new(),
+            note: Some(
+                "parsed successfully; structural orphan/cycle checks are flowchart-only".into(),
+            ),
+        }),
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ValidateReport {
+    pub kind: String,
+    pub valid: bool,
+    pub issues: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
