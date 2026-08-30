@@ -9,29 +9,7 @@ repository = "https://github.com/yingkitw/diagram"
 homepage = "https://github.com/yingkitw/diagram"
 documentation = "https://github.com/yingkitw/diagram#readme"
 readme = "README.md"
-keywords = [
-    "diagram",
-    "mermaid",
-    "plantuml",
-    "graphviz",
-    "dot",
-    "d2",
-    "flowchart",
-    "sequence-diagram",
-    "class-diagram",
-    "gantt",
-    "state-diagram",
-    "er-diagram",
-    "svg",
-    "png",
-    "pdf",
-    "mcp",
-    "cli",
-    "render",
-    "visualization",
-    "architecture",
-    "wasm",
-]
+keywords = ["diagram", "mermaid", "plantuml", "svg", "mcp"]
 categories = ["command-line-utilities", "development-tools", "visualization", "parsing", "wasm"]
 
 [lib]
