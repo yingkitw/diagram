@@ -1,7 +1,7 @@
 [package]
 name = "diagram"
 version = "0.1.5"
-edition = "2021"
+edition = "2024"
 description = "Rust CLI & MCP server for diagram rendering, generation, and analysis — Mermaid, PlantUML, Graphviz DOT, D2, JSON IR → SVG/PNG/PDF without Chromium or Java"
 authors = ["Ying Kit WONG"]
 license = "Apache-2.0"
