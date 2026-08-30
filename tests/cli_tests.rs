@@ -565,3 +565,450 @@ fn test_cli_import_export_roundtrip() {
     let _ = fs::remove_file(&json_out);
     let _ = fs::remove_file(&mmd_out);
 }
+
+#[test]
+fn test_cli_generate_class_from_rust() {
+    use std::fs;
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/code-sample.rs");
+    let out = temp_path("mmd");
+    let (stdout, _, code) = run(&[
+        "generate-class",
+        src.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    let body = fs::read_to_string(&out).unwrap();
+    assert!(body.contains("classDiagram"), "missing classDiagram header: {body}");
+    assert!(body.contains("Point"), "missing Point class: {body}");
+    assert!(body.contains("Shape"), "missing Shape trait: {body}");
+    let _ = fs::remove_file(&out);
+}
+
+#[test]
+fn test_cli_generate_tree_from_rust() {
+    use std::fs;
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/code-sample.rs");
+    let out = temp_path("mmd");
+    let (stdout, _, code) = run(&[
+        "generate-tree",
+        src.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+    ]);
+assert_eq!(code, 0, "stdout: {stdout}");
+    let body = fs::read_to_string(&out).unwrap();
+    assert!(body.contains("graph"), "missing graph header: {body}");
+    assert!(body.contains("compute"), "missing compute node: {body}");
+    assert!(body.contains("adjust"), "missing adjust callee: {body}");
+    let _ = fs::remove_file(&out);
+}
+
+#[test]
+fn test_cli_generate_class_to_json_ir() {
+    use std::fs;
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/code-sample.rs");
+    let out = temp_path("json");
+    let (stdout, _, code) = run(&[
+        "generate-class",
+        src.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    let body = fs::read_to_string(&out).unwrap();
+    let value: serde_json::Value =
+        serde_json::from_str(&body).expect("generated json must parse");
+    assert_eq!(value["version"], 1);
+    let diagrams = value["diagrams"].as_array().expect("diagrams array");
+    assert_eq!(diagrams.len(), 1);
+    assert_eq!(diagrams[0]["kind"], "class");
+    let classes = diagrams[0]["data"]["classes"].as_array().unwrap();
+    let names: Vec<&str> = classes
+        .iter()
+        .map(|c| c["id"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"Point"));
+    assert!(names.contains(&"Shape"));
+    let _ = fs::remove_file(&out);
+}
+
+#[test]
+fn test_cli_generate_tree_explicit_lang_typescript() {
+    use std::fs;
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/code-sample.ts");
+    let out = temp_path("mmd");
+    let (stdout, _, code) = run(&[
+        "generate-tree",
+        src.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+        "--lang",
+        "typescript",
+    ]);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    let body = fs::read_to_string(&out).unwrap();
+    assert!(body.contains("class::Circle"));
+    assert!(body.contains("interface::Shape"));
+    let _ = fs::remove_file(&out);
+}
+
+#[test]
+fn test_cli_generate_call_to_dot() {
+    use std::fs;
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/code-sample.rs");
+    let out = temp_path("dot");
+    let (stdout, _, code) = run(&[
+        "generate-call",
+        src.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    let body = fs::read_to_string(&out).unwrap();
+    assert!(body.contains("digraph"), "missing digraph header: {body}");
+    assert!(body.contains("compute"));
+    let _ = fs::remove_file(&out);
+}
+
+#[test]
+fn test_cli_generate_skeleton_from_rust_class() {
+    use std::fs;
+    // Generate a class diagram from Rust source first, then skeleton that.
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/code-sample.rs");
+    let diagram = temp_path("mmd");
+    let (_, _, code) = run(&[
+        "generate-class",
+        src.to_str().unwrap(),
+        "--output",
+        diagram.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "class generate failed");
+    let skeleton = temp_path("rs");
+    let (stdout, stderr, code) = run(&[
+        "generate-skeleton",
+        diagram.to_str().unwrap(),
+        "--lang",
+        "rust",
+        "--output",
+        skeleton.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "stdout: {stdout}\nstderr: {stderr}");
+    let body = fs::read_to_string(&skeleton).unwrap();
+    assert!(body.contains("struct Point"), "missing Point struct: {body}");
+    assert!(body.contains("enum Color"), "missing Color enum: {body}");
+    assert!(
+        body.contains("impl Shape for Point"),
+        "missing trait impl: {body}"
+    );
+    let _ = fs::remove_file(&diagram);
+    let _ = fs::remove_file(&skeleton);
+}
+
+#[test]
+fn test_cli_generate_skeleton_from_typescript_class() {
+    use std::fs;
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/code-sample.ts");
+    let diagram = temp_path("mmd");
+    let (_, _, code) = run(&[
+        "generate-class",
+        src.to_str().unwrap(),
+        "--output",
+        diagram.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "class generate failed");
+    let skeleton = temp_path("ts");
+    let (stdout, _, code) = run(&[
+        "generate-skeleton",
+        diagram.to_str().unwrap(),
+        "--lang",
+        "typescript",
+        "--output",
+        skeleton.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    let body = fs::read_to_string(&skeleton).unwrap();
+    assert!(body.contains("interface Shape"), "missing Shape: {body}");
+    assert!(body.contains("class Point"), "missing Point: {body}");
+    assert!(
+        body.contains("implements Shape"),
+        "missing implements: {body}"
+    );
+    let _ = fs::remove_file(&diagram);
+    let _ = fs::remove_file(&skeleton);
+}
+
+#[test]
+fn test_cli_generate_skeleton_from_flowchart() {
+    use std::fs;
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/code-sample.rs");
+    let diagram = temp_path("mmd");
+    let (_, _, code) = run(&[
+        "generate-tree",
+        src.to_str().unwrap(),
+        "--output",
+        diagram.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "tree generate failed");
+    let skeleton = temp_path("rs");
+    let (stdout, _, code) = run(&[
+        "generate-skeleton",
+        diagram.to_str().unwrap(),
+        "--lang",
+        "rust",
+        "--output",
+        skeleton.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    let body = fs::read_to_string(&skeleton).unwrap();
+    assert!(body.contains("fn compute"), "missing compute fn: {body}");
+    assert!(body.contains("todo!()"), "missing stub body: {body}");
+    let _ = fs::remove_file(&diagram);
+    let _ = fs::remove_file(&skeleton);
+}
+
+#[test]
+fn test_cli_generate_skeleton_unknown_language() {
+    use std::fs;
+    let diagram = temp_path("mmd");
+    fs::write(&diagram, "classDiagram\n  class Foo\n").unwrap();
+    let out = temp_path("py");
+    let (_, stderr, code) = run(&[
+        "generate-skeleton",
+        diagram.to_str().unwrap(),
+        "--lang",
+        "python",
+        "--output",
+        out.to_str().unwrap(),
+    ]);
+    assert_ne!(code, 0);
+    assert!(stderr.contains("unsupported language"));
+    let _ = fs::remove_file(&diagram);
+}
+
+#[test]
+fn test_cli_generate_call_from_rust() {
+    use std::fs;
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/code-sample.rs");
+    let out = temp_path("mmd");
+    let (stdout, _, code) = run(&[
+        "generate-call",
+        src.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    let body = fs::read_to_string(&out).unwrap();
+    assert!(body.contains("graph"), "missing graph header: {body}");
+    assert!(body.contains("compute"), "missing compute node: {body}");
+    assert!(body.contains("adjust"), "missing adjust callee: {body}");
+    let _ = fs::remove_file(&out);
+}
+
+#[test]
+fn test_cli_generate_class_unknown_extension() {
+    use std::fs;
+    let bad = temp_path("xyz");
+    fs::write(&bad, "fn main() {}").unwrap();
+    let out = temp_path("mmd");
+    let (_, stderr, code) = run(&[
+        "generate-class",
+        bad.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+    ]);
+    assert_ne!(code, 0, "expected failure for unknown extension");
+    assert!(
+        stderr.contains("unsupported source extension") || stderr.contains("Failed"),
+        "stderr should mention unsupported extension: {stderr}"
+    );
+    let _ = fs::remove_file(&bad);
+    let _ = fs::remove_file(&out);
+}
+
+#[test]
+fn test_cli_generate_class_from_typescript() {
+    use std::fs;
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/code-sample.ts");
+    let out = temp_path("mmd");
+    let (stdout, _, code) = run(&[
+        "generate-class",
+        src.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    let body = fs::read_to_string(&out).unwrap();
+    assert!(body.contains("classDiagram"), "missing classDiagram header: {body}");
+    assert!(body.contains("Circle"), "missing Circle class: {body}");
+    assert!(body.contains("Shape"), "missing Shape interface: {body}");
+    // implements → Realization
+    assert!(body.contains("Circle ..|> Shape"), "missing realization edge: {body}");
+    let _ = fs::remove_file(&out);
+}
+
+#[test]
+fn test_cli_generate_tree_from_typescript() {
+    use std::fs;
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/code-sample.ts");
+    let out = temp_path("mmd");
+    let (stdout, _, code) = run(&[
+        "generate-tree",
+        src.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    let body = fs::read_to_string(&out).unwrap();
+    assert!(body.contains("graph"), "missing graph header: {body}");
+    assert!(body.contains("Circle"), "missing Circle node: {body}");
+    assert!(body.contains("Shape"), "missing Shape interface node: {body}");
+    assert!(body.contains("import::"), "missing import edge: {body}");
+    let _ = fs::remove_file(&out);
+}
+
+#[test]
+fn test_cli_generate_call_from_typescript() {
+    use std::fs;
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/code-sample.ts");
+    let out = temp_path("mmd");
+    let (stdout, _, code) = run(&[
+        "generate-call",
+        src.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    let body = fs::read_to_string(&out).unwrap();
+    assert!(body.contains("graph"), "missing graph header: {body}");
+    assert!(body.contains("compute"), "missing compute node: {body}");
+    assert!(body.contains("adjust"), "missing adjust callee: {body}");
+    let _ = fs::remove_file(&out);
+}
+
+#[test]
+fn test_cli_create_template() {
+    let out = temp_path("mmd");
+    let path = out.to_str().unwrap();
+    let (stdout, _, code) = run(&["create", "--template", "aws-3tier", "--output", path]);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    let body = fs::read_to_string(&out).unwrap();
+    assert!(body.contains("CloudFront") || body.contains("Cloudfront"), "body: {body}");
+    let _ = fs::remove_file(&out);
+}
+
+#[test]
+fn test_cli_create_template_to_json() {
+    let out = temp_path("json");
+    let path = out.to_str().unwrap();
+    let (stdout, _, code) = run(&["create", "--template", "gcp-microservices", "--output", path]);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    let body = fs::read_to_string(&out).unwrap();
+    assert!(body.contains("\"kind\": \"flowchart\"") || body.contains("\"kind\":\"flowchart\""), "body: {body}");
+    let _ = fs::remove_file(&out);
+}
+
+#[test]
+fn test_cli_list_templates() {
+    let (stdout, _, code) = run(&["list-templates"]);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    assert!(stdout.contains("aws-3tier"), "stdout: {stdout}");
+    assert!(stdout.contains("gcp-microservices"), "stdout: {stdout}");
+    assert!(stdout.contains("azure-hub-spoke"), "stdout: {stdout}");
+}
+
+#[test]
+fn test_cli_render_ascii() {
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("examples/simple-flowchart.mmd");
+    let out = temp_path("txt");
+    let (stdout, _, code) = run(&[
+        "render",
+        path.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    let body = fs::read_to_string(&out).unwrap();
+    assert!(body.contains('+'), "expected ASCII box border: {body}");
+    assert!(body.contains("Start") || body.contains("Fix Issue"), "expected a label: {body}");
+    let _ = fs::remove_file(&out);
+}
+
+#[test]
+fn test_cli_import_drawio() {
+    let xml = "<?xml version=\"1.0\"?>\n<mxfile>\n  <diagram id=\"d0\" name=\"Page-1\">\n    <mxGraphModel>\n      <root>\n        <mxCell id=\"0\"/>\n        <mxCell id=\"1\" parent=\"0\"/>\n        <mxCell id=\"2\" value=\"Alpha\" style=\"rounded=0;whiteSpace=wrap;html=1;\" vertex=\"1\" parent=\"1\"/>\n        <mxCell id=\"3\" value=\"Beta\" style=\"rounded=1;whiteSpace=wrap;html=1;\" vertex=\"1\" parent=\"1\"/>\n        <mxCell id=\"4\" value=\"link\" style=\"endArrow=classic;html=1;\" edge=\"1\" parent=\"1\" source=\"2\" target=\"3\"/>\n      </root>\n    </mxGraphModel>\n  </diagram>\n</mxfile>\n";
+    let src = temp_path("drawio");
+    fs::write(&src, xml).unwrap();
+    let json_out = temp_path("json");
+    let (stdout, _, code) = run(&[
+        "import",
+        src.to_str().unwrap(),
+        "--output",
+        json_out.to_str().unwrap(),
+        "--from",
+        "drawio",
+    ]);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    let body = fs::read_to_string(&json_out).unwrap();
+    assert!(body.contains("Alpha"), "body: {body}");
+    assert!(body.contains("Beta"), "body: {body}");
+    assert!(body.contains("link"), "body: {body}");
+    let _ = fs::remove_file(&src);
+    let _ = fs::remove_file(&json_out);
+}
+
+#[test]
+fn test_cli_export_drawio_roundtrip() {
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("examples/simple-flowchart.mmd");
+    let drawio_out = temp_path("drawio");
+    let (stdout, _, code) = run(&[
+        "export",
+        src.to_str().unwrap(),
+        "--output",
+        drawio_out.to_str().unwrap(),
+        "--to",
+        "drawio",
+    ]);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    let xml = fs::read_to_string(&drawio_out).unwrap();
+    assert!(xml.contains("<mxfile"), "xml: {xml}");
+    assert!(xml.contains("<diagram"), "xml: {xml}");
+    // Re-import to IR and check the key node labels survive.
+    let json_out = temp_path("json");
+    let (stdout2, _, code2) = run(&[
+        "import",
+        drawio_out.to_str().unwrap(),
+        "--output",
+        json_out.to_str().unwrap(),
+        "--from",
+        "drawio",
+    ]);
+    assert_eq!(code2, 0, "stdout: {stdout2}");
+    let body = fs::read_to_string(&json_out).unwrap();
+    assert!(body.contains("Start") || body.contains("Is it working?"), "roundtrip body: {body}");
+    let _ = fs::remove_file(&drawio_out);
+    let _ = fs::remove_file(&json_out);
+}
+
+#[test]
+fn test_cli_lossiness_drawio() {
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("examples/simple-flowchart.mmd");
+    let (stdout, _, code) = run(&["lossiness", src.to_str().unwrap(), "--to", "drawio"]);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    assert!(stdout.contains("drawio"), "stdout: {stdout}");
+}

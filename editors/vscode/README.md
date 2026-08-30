@@ -1,6 +1,6 @@
 # diagram VS Code extension
 
-Minimal editor UX for the native [`diagram`](../../README.md) CLI: SVG preview, validate, and render-to-file — no Chromium or Mermaid.js.
+Minimal editor UX for the native [`diagram`](../../README.md) CLI: SVG preview, validate, render-to-file, and **code → UML** generation — no Chromium, no Mermaid.js, no LLM.
 
 ## Requirements
 
@@ -25,6 +25,9 @@ Or copy/symlink this folder into your extensions directory and reload the window
 | **Diagram: Preview SVG** | Render active file with `diagram render` into a side webview |
 | **Diagram: Validate** | Run `diagram validate` and show output |
 | **Diagram: Render SVG to File** | Save SVG via `diagram render --output` |
+| **Diagram: Generate Class from Source** | Run `diagram generate-class` on the active Rust/TS file |
+| **Diagram: Generate Tree from Source** | Run `diagram generate-tree` on the active Rust/TS file |
+| **Diagram: Generate Call Graph from Source** | Run `diagram generate-call` on the active Rust/TS file |
 
 Preview refreshes on save when **diagram.autoPreviewOnSave** is enabled (default).
 

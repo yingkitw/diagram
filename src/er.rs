@@ -36,7 +36,7 @@ impl Cardinality {
         }
     }
 
-    fn symbol(self) -> &'static str {
+    pub(crate) fn symbol(self) -> &'static str {
         match self {
             Self::One => "1",
             Self::ZeroOrOne => "0..1",
@@ -565,7 +565,7 @@ fn layout(diagram: &ErDiagram) -> ErLayout {
         laid_rels.push(LaidRel {
             x1: x1 + w1,
             y1: y1 + h1 / 2.0,
-            x2: x2,
+            x2,
             y2: y2 + h2 / 2.0,
             from_card: r.from_card,
             to_card: r.to_card,

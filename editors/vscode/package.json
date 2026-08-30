@@ -31,7 +31,10 @@
     "onLanguage:d2",
     "onCommand:diagram.preview",
     "onCommand:diagram.validate",
-    "onCommand:diagram.renderSvg"
+    "onCommand:diagram.renderSvg",
+    "onCommand:diagram.generateClass",
+    "onCommand:diagram.generateTree",
+    "onCommand:diagram.generateCall"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -48,6 +51,18 @@
       {
         "command": "diagram.renderSvg",
         "title": "Diagram: Render SVG to File"
+      },
+      {
+        "command": "diagram.generateClass",
+        "title": "Diagram: Generate Class from Source"
+      },
+      {
+        "command": "diagram.generateTree",
+        "title": "Diagram: Generate Tree from Source"
+      },
+      {
+        "command": "diagram.generateCall",
+        "title": "Diagram: Generate Call Graph from Source"
       }
     ],
     "menus": {
@@ -55,6 +70,21 @@
         {
           "command": "diagram.preview",
           "when": "resourceExtname =~ /\\.(mmd|mermaid|puml|plantuml|dot|gv|d2)$/",
+          "group": "navigation"
+        },
+        {
+          "command": "diagram.generateClass",
+          "when": "resourceExtname =~ /\\.(rs|ts)$/",
+          "group": "navigation"
+        },
+        {
+          "command": "diagram.generateTree",
+          "when": "resourceExtname =~ /\\.(rs|ts)$/",
+          "group": "navigation"
+        },
+        {
+          "command": "diagram.generateCall",
+          "when": "resourceExtname =~ /\\.(rs|ts)$/",
           "group": "navigation"
         }
       ],
@@ -67,6 +97,15 @@
         },
         {
           "command": "diagram.renderSvg"
+        },
+        {
+          "command": "diagram.generateClass"
+        },
+        {
+          "command": "diagram.generateTree"
+        },
+        {
+          "command": "diagram.generateCall"
         }
       ]
     },

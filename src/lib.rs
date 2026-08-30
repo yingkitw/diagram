@@ -1,4 +1,5 @@
 pub mod analyze;
+pub mod ascii;
 pub mod class;
 pub mod composite;
 pub mod diagram;
@@ -15,6 +16,9 @@ pub mod parser;
 pub mod renderer;
 pub mod sequence;
 pub mod state;
+
+#[cfg(feature = "native")]
+pub mod codegen;
 
 #[cfg(feature = "native")]
 pub mod cli;

@@ -1,5 +1,7 @@
 use std::fs;
 
+use diagram::ir::Diagram;
+
 fn examples_dir() -> std::path::PathBuf {
     let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("examples");
@@ -704,4 +706,122 @@ fn test_preview_renders_gantt() {
     .unwrap();
     assert!(svg.contains("<svg"));
     assert!(svg.contains("Implement"));
+}
+
+#[test]
+fn test_code_uml_skeleton_roundtrip_class() {
+    // Source → IR (class) → Skeleton (Rust) → IR (class) should still
+    // contain the original type-level names + relations. The skeleton's
+    // job is to be compilable and shape-stable, not to re-emit the
+    // extractor's per-`impl` classes ("Shape for Point" et al.). So we
+    // restrict the comparison to classes whose source-level stereotype
+    // is struct / interface / enum — those are the entities a refactor
+    // would actually care about preserving.
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/code-sample.rs");
+    let source_text = fs::read_to_string(&src).unwrap();
+
+    // 1. Source → IR (class).
+    let original = diagram::codegen::from_source(
+        &source_text,
+        diagram::codegen::Language::Rust,
+        diagram::codegen::CodeKind::Class,
+    )
+    .unwrap();
+
+    // 2. IR → skeleton (Rust).
+    let skel = diagram::codegen::skeleton(&original, diagram::codegen::Language::Rust);
+
+    // 3. Skeleton (Rust) → IR (class) again.
+    let reparsed = diagram::codegen::from_source(
+        &skel,
+        diagram::codegen::Language::Rust,
+        diagram::codegen::CodeKind::Class,
+    )
+    .unwrap();
+
+    let Diagram::Class(orig_class) = original.primary().unwrap() else {
+        panic!("expected class diagram");
+    };
+    let Diagram::Class(re_class) = reparsed.primary().unwrap() else {
+        panic!("expected class diagram");
+    };
+
+    fn type_classes(cd: &diagram::class::ClassDiagram) -> std::collections::HashSet<String> {
+        cd.classes
+            .iter()
+            .filter(|c| c.stereotype.as_deref().is_none_or(|s| s != "service"))
+            .map(|c| c.id.clone())
+            .collect()
+    }
+
+    let orig_names: std::collections::HashSet<String> = type_classes(orig_class);
+    let re_names: std::collections::HashSet<String> = type_classes(re_class);
+    assert_eq!(
+        orig_names, re_names,
+        "type-level class names must roundtrip through skeleton"
+    );
+
+    let orig_rels: std::collections::HashSet<(String, String)> = orig_class
+        .relations
+        .iter()
+        .map(|r| (r.from.clone(), r.to.clone()))
+        .collect();
+    let re_rels: std::collections::HashSet<(String, String)> = re_class
+        .relations
+        .iter()
+        .map(|r| (r.from.clone(), r.to.clone()))
+        .collect();
+    assert_eq!(
+        orig_rels, re_rels,
+        "relations must roundtrip through skeleton"
+    );
+}
+
+#[test]
+fn test_code_uml_skeleton_roundtrip_tree() {
+    // Source → IR (flowchart/tree) → Skeleton (Rust) → IR (call).
+    // The skeleton is intentionally lossy on flowchart kinds (stadium
+    // nodes become `fn`s, rects become `const`s), so we only assert the
+    // names that DO survive — those of top-level functions with a
+    // stadium shape in the source.
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/code-sample.rs");
+    let source_text = fs::read_to_string(&src).unwrap();
+
+    let tree_doc = diagram::codegen::from_source(
+        &source_text,
+        diagram::codegen::Language::Rust,
+        diagram::codegen::CodeKind::Tree,
+    )
+    .unwrap();
+
+    let skel = diagram::codegen::skeleton(&tree_doc, diagram::codegen::Language::Rust);
+
+    let call_doc = diagram::codegen::from_source(
+        &skel,
+        diagram::codegen::Language::Rust,
+        diagram::codegen::CodeKind::Call,
+    )
+    .unwrap();
+
+    let Diagram::Flowchart(call_fc) = call_doc.primary().unwrap() else {
+        panic!("expected flowchart");
+    };
+
+    let names: std::collections::HashSet<&str> = call_fc
+        .nodes
+        .iter()
+        .map(|n| n.id.as_str())
+        .filter_map(|n| n.strip_prefix("fn::"))
+        .collect();
+    // Stadium-shaped trait "Shape" survives as a function declaration in
+    // the skeleton, so it appears in the re-extracted call graph as
+    // `fn::Shape`. Other top-level functions in the source had `Rect`
+    // shape in the tree (the default), which the skeleton emits as
+    // `const` rather than `fn`, so they are intentionally absent.
+    assert!(
+        names.contains("Shape"),
+        "Shape trait (stadium) should roundtrip as fn: {names:?}"
+    );
 }

@@ -2,6 +2,7 @@
 
 pub mod d2;
 pub mod dot;
+pub mod drawio;
 pub mod mermaid;
 pub mod plantuml;
 
@@ -15,6 +16,7 @@ pub enum Format {
     Dot,
     D2,
     PlantUml,
+    DrawIo,
 }
 
 impl Format {
@@ -25,6 +27,7 @@ impl Format {
             "dot" | "graphviz" | "gv" => Some(Self::Dot),
             "d2" | "d2lang" => Some(Self::D2),
             "plantuml" | "puml" => Some(Self::PlantUml),
+            "drawio" | "draw.io" | "draw-io" | "mxgraph" => Some(Self::DrawIo),
             _ => None,
         }
     }
@@ -36,6 +39,7 @@ impl Format {
             Self::Dot => "dot",
             Self::D2 => "d2",
             Self::PlantUml => "plantuml",
+            Self::DrawIo => "drawio",
         }
     }
 
@@ -50,6 +54,10 @@ impl Format {
             Self::D2
         } else if lower.ends_with(".puml") || lower.ends_with(".plantuml") {
             Self::PlantUml
+        } else if lower.ends_with(".drawio") || lower.ends_with(".xml") {
+            // `.xml` is generic; only treat as draw.io when it is the explicit
+            // output extension (content detection is the primary path for import).
+            Self::DrawIo
         } else {
             Self::Mermaid
         }
@@ -61,6 +69,9 @@ pub fn detect(source: &str, path: Option<&str>) -> Format {
     let trimmed = source.trim_start();
     if trimmed.starts_with('{') {
         return Format::JsonIr;
+    }
+    if drawio::is_drawio(source) {
+        return Format::DrawIo;
     }
     if plantuml::is_plantuml(source) {
         return Format::PlantUml;
@@ -89,6 +100,9 @@ pub fn detect(source: &str, path: Option<&str>) -> Format {
         if lower.ends_with(".puml") || lower.ends_with(".plantuml") {
             return Format::PlantUml;
         }
+        if lower.ends_with(".drawio") {
+            return Format::DrawIo;
+        }
         if lower.ends_with(".mmd") || lower.ends_with(".mermaid") {
             return Format::Mermaid;
         }
@@ -105,6 +119,7 @@ pub fn import_str(source: &str, format: Format) -> Result<Document, IrError> {
         Format::Dot => dot::parse_to_document(source),
         Format::D2 => d2::parse_to_document(source),
         Format::PlantUml => plantuml::parse_to_document(source),
+        Format::DrawIo => drawio::parse_to_document(source),
     }
 }
 
@@ -118,6 +133,7 @@ pub fn export_str(doc: &Document, format: Format) -> Result<String, IrError> {
         Format::Dot => dot::export_document(doc),
         Format::D2 => d2::export_document(doc),
         Format::PlantUml => plantuml::export_document(doc),
+        Format::DrawIo => drawio::export_document(doc),
     }
 }
 

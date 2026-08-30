@@ -19,7 +19,7 @@ pub enum Cli {
         path: String,
         #[arg(long, short, help = "Output JSON IR file")]
         output: String,
-        #[arg(long, help = "Source format: mermaid, json, dot, d2, or plantuml (auto-detect if omitted)")]
+        #[arg(long, help = "Source format: mermaid, json, dot, d2, plantuml, or drawio (auto-detect if omitted)")]
         from: Option<String>,
     },
 
@@ -28,7 +28,7 @@ pub enum Cli {
         path: String,
         #[arg(long, short, help = "Output file path")]
         output: String,
-        #[arg(long, help = "Target format: mermaid, json, dot, d2, or plantuml (auto-detect if omitted)")]
+        #[arg(long, help = "Target format: mermaid, json, dot, d2, plantuml, or drawio (auto-detect if omitted)")]
         to: Option<String>,
         #[arg(long, help = "Print lossiness summary after export")]
         report: bool,
@@ -37,7 +37,7 @@ pub enum Cli {
     #[command(about = "Report export lossiness (what IR fields a format cannot represent)")]
     Lossiness {
         path: String,
-        #[arg(long, help = "Target format: mermaid, json, dot, d2, or plantuml (default: mermaid)")]
+        #[arg(long, help = "Target format: mermaid, json, dot, d2, plantuml, or drawio (default: mermaid)")]
         to: Option<String>,
     },
 
@@ -174,8 +174,53 @@ pub enum Cli {
     #[command(about = "Create a new diagram scaffold (flowchart, sequence, class, gantt, state, er)")]
     Create {
         #[arg(long, help = "Diagram kind: flowchart, sequence, class, gantt, state, er")]
-        kind: String,
-        #[arg(long, short, help = "Output file path (.mmd or .json)")]
+        kind: Option<String>,
+        #[arg(long, short, help = "Output file path (.mmd, .json, .dot, .d2, .puml)")]
+        output: String,
+        #[arg(long, help = "Architecture template: aws-3tier, gcp-microservices, azure-hub-spoke (writes a flowchart scaffold)")]
+        template: Option<String>,
+    },
+
+    #[command(about = "List built-in architecture templates (aws-3tier, gcp-microservices, azure-hub-spoke)")]
+    ListTemplates,
+
+    #[command(about = "Generate a class diagram from a source file (tree-sitter)")]
+    GenerateClass {
+        #[arg(help = "Source code file (e.g. example.rs)")]
+        path: String,
+        #[arg(long, help = "Output file path (.mmd, .json, .svg, .png, .pdf)")]
+        output: String,
+        #[arg(long, help = "Source language (default: inferred from extension)")]
+        lang: Option<String>,
+    },
+
+    #[command(about = "Generate a module / file tree flowchart from a source file")]
+    GenerateTree {
+        #[arg(help = "Source code file (e.g. example.rs)")]
+        path: String,
+        #[arg(long, help = "Output file path (.mmd, .json, .svg, .png, .pdf)")]
+        output: String,
+        #[arg(long, help = "Source language (default: inferred from extension)")]
+        lang: Option<String>,
+    },
+
+    #[command(about = "Generate a function call graph from a source file")]
+    GenerateCall {
+        #[arg(help = "Source code file (e.g. example.rs)")]
+        path: String,
+        #[arg(long, help = "Output file path (.mmd, .json, .svg, .png, .pdf)")]
+        output: String,
+        #[arg(long, help = "Source language (default: inferred from extension)")]
+        lang: Option<String>,
+    },
+
+    #[command(about = "Emit a compilable source skeleton (Rust or TypeScript) from a diagram file")]
+    GenerateSkeleton {
+        #[arg(help = "Diagram file (.mmd, .json, .dot, .d2, .puml, ...)")]
+        path: String,
+        #[arg(long, help = "Target language: rust or typescript")]
+        lang: String,
+        #[arg(long, help = "Output source file path")]
         output: String,
     },
 
@@ -251,7 +296,12 @@ impl Cli {
             Self::ListEdges { path } => cmd_list_edges(path),
             Self::Validate { path } => cmd_validate(path),
             Self::Metrics { path } => cmd_metrics(path),
-            Self::Create { kind, output } => cmd_create(kind, output),
+            Self::Create { kind, output, template } => cmd_create(kind.as_deref(), template.as_deref(), output),
+            Self::ListTemplates => cmd_list_templates(),
+            Self::GenerateClass { path, output, lang } => cmd_generate_code(path, output, lang.as_deref(), crate::codegen::CodeKind::Class),
+            Self::GenerateTree { path, output, lang } => cmd_generate_code(path, output, lang.as_deref(), crate::codegen::CodeKind::Tree),
+            Self::GenerateCall { path, output, lang } => cmd_generate_code(path, output, lang.as_deref(), crate::codegen::CodeKind::Call),
+            Self::GenerateSkeleton { path, lang, output } => cmd_generate_skeleton(path, lang, output),
             Self::Diff { left, right } => cmd_diff(left, right),
             Self::Merge { left, right, output } => cmd_merge(left, right, output),
             Self::Preview { path, port, theme } => {
@@ -291,7 +341,7 @@ fn cmd_ir(path: &str) -> anyhow::Result<()> {
 
 fn parse_format(s: &str) -> anyhow::Result<crate::formats::Format> {
     crate::formats::Format::parse(s)
-        .ok_or_else(|| anyhow::anyhow!("Invalid format '{s}'. Use: mermaid, json, dot, d2, plantuml"))
+        .ok_or_else(|| anyhow::anyhow!("Invalid format '{s}'. Use: mermaid, json, dot, d2, plantuml, drawio"))
 }
 
 fn cmd_import(path: &str, output: &str, from: Option<&str>) -> anyhow::Result<()> {
@@ -360,6 +410,15 @@ fn cmd_render(
         return Ok(());
     }
 
+    // ASCII art output: short-circuit before the SVG render (no theme, no raster).
+    if let Some(out_path) = output
+        && is_ascii_output(out_path)
+    {
+        let ascii = render_ascii_for(&doc, index)?;
+        std::fs::write(out_path, ascii)?;
+        return Ok(());
+    }
+
     let svg = if let Some(idx) = index {
         doc.render_diagram_at(idx, theme)
             .map_err(|e| anyhow::anyhow!("{e}"))?
@@ -386,6 +445,23 @@ fn cmd_render(
         None => println!("{svg}"),
     }
     Ok(())
+}
+
+fn is_ascii_output(path: &str) -> bool {
+    let lower = path.to_lowercase();
+    lower.ends_with(".txt") || lower.ends_with(".ascii")
+}
+
+fn render_ascii_for(doc: &crate::ir::Document, index: Option<usize>) -> anyhow::Result<String> {
+    Ok(match index {
+        Some(idx) => {
+            let d = doc.diagrams.get(idx).ok_or_else(|| {
+                anyhow::anyhow!("diagram index {idx} out of range (0..{})", doc.diagrams.len())
+            })?;
+            crate::ascii::render_document(&crate::ir::Document::single(d.clone()))
+        }
+        None => crate::ascii::render_document(doc),
+    })
 }
 
 async fn cmd_render_watch(
@@ -602,9 +678,55 @@ fn cmd_metrics(path: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn cmd_create(kind: &str, output: &str) -> anyhow::Result<()> {
-    let kind = crate::generate::write_scaffold(kind, output).map_err(|e| anyhow::anyhow!("{e}"))?;
-    println!("Created {} diagram at {output}", kind);
+fn cmd_create(kind: Option<&str>, template: Option<&str>, output: &str) -> anyhow::Result<()> {
+    match (kind, template) {
+        (Some(_), Some(_)) => anyhow::bail!("--kind and --template are mutually exclusive"),
+        (Some(k), None) => {
+            let kind = crate::generate::write_scaffold(k, output).map_err(|e| anyhow::anyhow!("{e}"))?;
+            println!("Created {} diagram at {output}", kind);
+        }
+        (None, Some(t)) => {
+            let t = crate::generate::write_template(t, output).map_err(|e| anyhow::anyhow!("{e}"))?;
+            println!("Created {} template at {output}", t.as_str());
+        }
+        (None, None) => anyhow::bail!("provide --kind or --template"),
+    }
+    Ok(())
+}
+
+fn cmd_list_templates() -> anyhow::Result<()> {
+    for t in crate::generate::all_templates() {
+        println!("{}\t{}", t.as_str(), t.description());
+    }
+    Ok(())
+}
+
+fn cmd_generate_code(
+    path: &str,
+    output: &str,
+    lang: Option<&str>,
+    kind: crate::codegen::CodeKind,
+) -> anyhow::Result<()> {
+    let (doc, _) = crate::codegen::write_to_path(path, lang, kind, output, None)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    println!(
+        "Generated {} {} from {path} → {output}",
+        kind,
+        doc.primary()
+            .map(|d| d.kind().to_string())
+            .unwrap_or_else(|| "diagram".into())
+    );
+    Ok(())
+}
+
+fn cmd_generate_skeleton(path: &str, lang: &str, output: &str) -> anyhow::Result<()> {
+    let language = crate::codegen::Language::parse(lang)
+        .ok_or_else(|| anyhow::anyhow!("unsupported language '{lang}'; supported: rust, typescript"))?;
+    let body = crate::codegen::skeleton_from_path(path, language)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    std::fs::write(output, body)
+        .map_err(|e| anyhow::anyhow!("Failed to write '{output}': {e}"))?;
+    println!("Generated {language} skeleton from {path} → {output}");
     Ok(())
 }
 

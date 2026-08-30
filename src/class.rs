@@ -306,10 +306,10 @@ pub(crate) fn set_stereotype(
     let Some(stereo) = stereotype else {
         return;
     };
-    if let Some(c) = classes.get_mut(id) {
-        if c.stereotype.is_none() {
-            c.stereotype = Some(stereo);
-        }
+    if let Some(c) = classes.get_mut(id)
+        && c.stereotype.is_none()
+    {
+        c.stereotype = Some(stereo);
     }
 }
 
@@ -413,14 +413,14 @@ fn replace_tilde_pairs(s: &str, open: &str, close: &str) -> String {
         let mut found: Option<(usize, usize)> = None;
         let mut i = 0;
         while i < chars.len() {
-            if chars[i] == '~' {
-                if let Some(j) = (i + 1..chars.len()).find(|&j| chars[j] == '~') {
-                    if j > i + 1 && !chars[i + 1..j].contains(&'~') {
-                        found = Some((i, j));
-                    }
-                    i = j;
-                    continue;
+            if chars[i] == '~'
+                && let Some(j) = (i + 1..chars.len()).find(|&j| chars[j] == '~')
+            {
+                if j > i + 1 && !chars[i + 1..j].contains(&'~') {
+                    found = Some((i, j));
                 }
+                i = j;
+                continue;
             }
             i += 1;
         }

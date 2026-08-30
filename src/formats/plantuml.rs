@@ -153,10 +153,10 @@ fn export_activity_steps(
         out.push_str("endif\n");
         visited.extend(yes_seen);
         visited.extend(no_seen);
-        if let Some(ref merge_id) = merge {
-            if !visited.contains(merge_id) {
-                export_activity_steps(fc, merge_id, out, visited, None)?;
-            }
+        if let Some(ref merge_id) = merge
+            && !visited.contains(merge_id)
+        {
+            export_activity_steps(fc, merge_id, out, visited, None)?;
         }
         return Ok(());
     }
@@ -503,10 +503,10 @@ impl ActivityBuilder {
                 if let Some(y) = frame.yes_tail {
                     merge.push(y);
                 }
-                if let Some(n) = frame.no_tail {
-                    if !merge.contains(&n) {
-                        merge.push(n);
-                    }
+                if let Some(n) = frame.no_tail
+                    && !merge.contains(&n)
+                {
+                    merge.push(n);
                 }
                 if merge.is_empty() {
                     merge.push(frame.fork_id);
@@ -794,10 +794,10 @@ fn parse_plantuml_fragment_start(line: &str) -> Option<(crate::sequence::Fragmen
         if line == prefix {
             return Some((kind, String::new()));
         }
-        if let Some(rest) = line.strip_prefix(prefix) {
-            if rest.starts_with(' ') || rest.is_empty() {
-                return Some((kind, rest.trim().to_string()));
-            }
+        if let Some(rest) = line.strip_prefix(prefix)
+            && (rest.starts_with(' ') || rest.is_empty())
+        {
+            return Some((kind, rest.trim().to_string()));
         }
     }
     None

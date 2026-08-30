@@ -10,23 +10,29 @@ use crate::{diagram as dg, renderer};
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct FilePath {
-    #[schemars(description = "Path to a diagram file (Mermaid, JSON IR, DOT, D2, or PlantUML)")]
+    #[schemars(description = "Path to a diagram file (Mermaid, JSON IR, DOT, D2, PlantUML, or draw.io)")]
     path: String,
 }
 
+/// No-argument tool parameters.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct EmptyParams {}
+
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct CreateParams {
-    #[schemars(description = "Diagram kind: flowchart, sequence, class, gantt, state, or er")]
-    kind: String,
-    #[schemars(description = "Output file path (.mmd or .json)")]
+    #[schemars(description = "Diagram kind: flowchart, sequence, class, gantt, state, or er (omit when using template)")]
+    kind: Option<String>,
+    #[schemars(description = "Output file path (.mmd, .json, .dot, .d2, .puml)")]
     output: String,
+    #[schemars(description = "Architecture template: aws-3tier, gcp-microservices, or azure-hub-spoke (writes a flowchart scaffold; mutually exclusive with kind)")]
+    template: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct LossinessParams {
     #[schemars(description = "Source diagram file path")]
     path: String,
-    #[schemars(description = "Target format: mermaid, json, dot, d2, or plantuml")]
+    #[schemars(description = "Target format: mermaid, json, dot, d2, plantuml, or drawio")]
     to: Option<String>,
 }
 
@@ -60,7 +66,7 @@ struct ImportParams {
     path: String,
     #[schemars(description = "Output JSON IR file path")]
     output: String,
-    #[schemars(description = "Source format: mermaid, json, dot, d2, or plantuml (auto-detect if omitted)")]
+    #[schemars(description = "Source format: mermaid, json, dot, d2, plantuml, or drawio (auto-detect if omitted)")]
     from: Option<String>,
 }
 
@@ -70,7 +76,7 @@ struct ExportParams {
     path: String,
     #[schemars(description = "Output file path")]
     output: String,
-    #[schemars(description = "Target format: mermaid, json, dot, d2, or plantuml (auto-detect if omitted)")]
+    #[schemars(description = "Target format: mermaid, json, dot, d2, plantuml, or drawio (auto-detect if omitted)")]
     to: Option<String>,
 }
 
@@ -330,15 +336,14 @@ impl DiagramServer {
 
     #[tool(description = "Export lossiness report JSON for a target format")]
     async fn lossiness_report(&self, Parameters(params): Parameters<LossinessParams>) -> CallToolResult {
-        let format = match params.to.as_deref().unwrap_or("mermaid") {
-            s => match crate::formats::Format::parse(s) {
-                Some(f) => f,
-                None => {
-                    return CallToolResult::error(vec![ContentBlock::text(format!(
-                        "Invalid format '{s}'. Use: mermaid, json, dot, d2, plantuml"
-                    ))]);
-                }
-            },
+        let s = params.to.as_deref().unwrap_or("mermaid");
+        let format = match crate::formats::Format::parse(s) {
+            Some(f) => f,
+            None => {
+                return CallToolResult::error(vec![ContentBlock::text(format!(
+                    "Invalid format '{s}'. Use: mermaid, json, dot, d2, plantuml"
+                ))]);
+            }
         };
         match crate::ir::load_path(&params.path) {
             Ok(doc) => {
@@ -795,18 +800,45 @@ impl DiagramServer {
         }
     }
 
-    #[tool(description = "Create a new diagram scaffold file")]
+    #[tool(description = "Create a new diagram scaffold file (kind or template; mutually exclusive)")]
     async fn create_diagram(&self, Parameters(params): Parameters<CreateParams>) -> CallToolResult {
-        match crate::generate::write_scaffold(&params.kind, &params.output) {
-            Ok(kind) => {
-                let json = serde_json::json!({
-                    "ok": true,
-                    "kind": kind.to_string(),
-                    "output": params.output,
-                });
-                CallToolResult::success(vec![ContentBlock::text(json.to_string())])
-            }
+        let result = match (params.kind.as_deref(), params.template.as_deref()) {
+            (Some(_), Some(_)) => Err("kind and template are mutually exclusive".to_string()),
+            (Some(k), None) => crate::generate::write_scaffold(k, &params.output)
+                .map(|kind| serde_json::json!({ "ok": true, "kind": kind.to_string(), "output": params.output })),
+            (None, Some(t)) => crate::generate::write_template(t, &params.output)
+                .map(|t| serde_json::json!({ "ok": true, "template": t.as_str(), "output": params.output })),
+            (None, None) => Err("provide kind or template".to_string()),
+        };
+        match result {
+            Ok(json) => CallToolResult::success(vec![ContentBlock::text(json.to_string())]),
             Err(e) => CallToolResult::error(vec![ContentBlock::text(e)]),
+        }
+    }
+
+    #[tool(description = "List built-in architecture templates (aws-3tier, gcp-microservices, azure-hub-spoke)")]
+    async fn list_templates(&self, _params: Parameters<EmptyParams>) -> CallToolResult {
+        let items: Vec<serde_json::Value> = crate::generate::all_templates()
+            .iter()
+            .map(|t| {
+                serde_json::json!({
+                    "id": t.as_str(),
+                    "description": t.description(),
+                })
+            })
+            .collect();
+        CallToolResult::success(vec![ContentBlock::text(
+            serde_json::to_string_pretty(&items).unwrap_or_default(),
+        )])
+    }
+
+    #[tool(description = "Render a diagram as ASCII art text (flowchart: box-and-arrow; other kinds: text outline). Output is monospace text, no theme.")]
+    async fn render_ascii(&self, Parameters(params): Parameters<FilePath>) -> CallToolResult {
+        match crate::ir::load_path(&params.path) {
+            Ok(doc) => CallToolResult::success(vec![ContentBlock::text(
+                crate::ascii::render_document(&doc),
+            )]),
+            Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
         }
     }
 
@@ -845,6 +877,72 @@ impl DiagramServer {
         CallToolResult::success(vec![ContentBlock::text(
             serde_json::to_string_pretty(&edges).unwrap_or_default(),
         )])
+    }
+
+    #[tool(description = "Generate a class diagram from a source file via tree-sitter (Rust, TypeScript)")]
+    async fn generate_class_diagram(
+        &self,
+        Parameters(params): Parameters<CodeGenParams>,
+    ) -> CallToolResult {
+        match run_code_gen(&params, crate::codegen::CodeKind::Class) {
+            Ok(value) => CallToolResult::success(vec![ContentBlock::text(value.to_string())]),
+            Err(e) => e,
+        }
+    }
+
+    #[tool(description = "Generate a module / file tree flowchart from a source file via tree-sitter (Rust, TypeScript)")]
+    async fn generate_tree_diagram(
+        &self,
+        Parameters(params): Parameters<CodeGenParams>,
+    ) -> CallToolResult {
+        match run_code_gen(&params, crate::codegen::CodeKind::Tree) {
+            Ok(value) => CallToolResult::success(vec![ContentBlock::text(value.to_string())]),
+            Err(e) => e,
+        }
+    }
+
+    #[tool(description = "Generate a function call graph from a source file via tree-sitter (Rust, TypeScript)")]
+    async fn generate_call_diagram(
+        &self,
+        Parameters(params): Parameters<CodeGenParams>,
+    ) -> CallToolResult {
+        match run_code_gen(&params, crate::codegen::CodeKind::Call) {
+            Ok(value) => CallToolResult::success(vec![ContentBlock::text(value.to_string())]),
+            Err(e) => e,
+        }
+    }
+
+    #[tool(description = "Emit a compilable source skeleton (Rust or TypeScript) from any supported diagram file — UML → code")]
+    async fn generate_skeleton_diagram(
+        &self,
+        Parameters(params): Parameters<SkeletonParams>,
+    ) -> CallToolResult {
+        let language = match crate::codegen::Language::parse(&params.lang) {
+            Some(l) => l,
+            None => {
+                return CallToolResult::error(vec![ContentBlock::text(format!(
+                    "Unsupported language '{}'. Supported: rust, typescript",
+                    params.lang
+                ))]);
+            }
+        };
+        let body = match crate::codegen::skeleton_from_path(&params.path, language) {
+            Ok(s) => s,
+            Err(e) => return CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
+        };
+        if let Err(e) = std::fs::write(&params.output, &body) {
+            return CallToolResult::error(vec![ContentBlock::text(format!(
+                "Failed to write '{}': {}",
+                params.output, e
+            ))]);
+        }
+        let value = serde_json::json!({
+            "language": language.as_str(),
+            "source_diagram": params.path,
+            "output": params.output,
+            "bytes": body.len(),
+        });
+        CallToolResult::success(vec![ContentBlock::text(value.to_string())])
     }
 
     #[tool(description = "Compare two diagrams and show differences")]
@@ -899,6 +997,61 @@ struct DiffParams {
     left: String,
     #[schemars(description = "Path to the right/modified mermaid .mmd file")]
     right: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct CodeGenParams {
+    #[schemars(description = "Path to the source code file (e.g. example.rs, example.ts)")]
+    path: String,
+    #[schemars(description = "Output diagram file path (.mmd, .json, .svg, .png, .pdf, .dot, .d2, .puml)")]
+    output: String,
+    #[schemars(description = "Source language: rust or typescript (defaults to inferred from file extension)")]
+    lang: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct SkeletonParams {
+    #[schemars(description = "Path to a diagram file (.mmd, .json, .dot, .d2, .puml, ...)")]
+    path: String,
+    #[schemars(description = "Target language for the skeleton: rust or typescript")]
+    lang: String,
+    #[schemars(description = "Output source file path")]
+    output: String,
+}
+
+fn run_code_gen(
+    params: &CodeGenParams,
+    kind: crate::codegen::CodeKind,
+) -> Result<serde_json::Value, CallToolResult> {
+    let (doc, format) = crate::codegen::write_to_path(
+        &params.path,
+        params.lang.as_deref(),
+        kind,
+        &params.output,
+        None,
+    )
+    .map_err(|e| CallToolResult::error(vec![ContentBlock::text(e.to_string())]))?;
+
+    let mut stats = serde_json::Map::new();
+    stats.insert("kind".into(), serde_json::json!(kind.as_str()));
+    stats.insert("format".into(), serde_json::json!(format.as_str()));
+    stats.insert("output".into(), serde_json::json!(params.output));
+    stats.insert("source".into(), serde_json::json!(params.path));
+    if let Some(diag) = doc.primary() {
+        stats.insert("diagram_kind".into(), serde_json::json!(diag.kind().to_string()));
+        match diag {
+            crate::ir::Diagram::Flowchart(f) => {
+                stats.insert("nodes".into(), serde_json::json!(f.nodes.len()));
+                stats.insert("edges".into(), serde_json::json!(f.edges.len()));
+            }
+            crate::ir::Diagram::Class(c) => {
+                stats.insert("classes".into(), serde_json::json!(c.classes.len()));
+                stats.insert("relations".into(), serde_json::json!(c.relations.len()));
+            }
+            _ => {}
+        }
+    }
+    Ok(serde_json::Value::Object(stats))
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]

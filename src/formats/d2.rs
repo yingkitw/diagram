@@ -230,6 +230,9 @@ fn shape_from_d2(value: &str) -> NodeShape {
     }
 }
 
+/// Parsed connection tuple: (left_id, op_token, right_id, optional_label, has_arrow_chain).
+type ConnectionParts = (String, &'static str, String, Option<String>, bool);
+
 struct Parser<'a> {
     input: &'a str,
     pos: usize,
@@ -372,7 +375,7 @@ impl<'a> Parser<'a> {
 
     fn try_parse_connection(
         &mut self,
-    ) -> Result<Option<(String, &'static str, String, Option<String>, bool)>, IrError> {
+    ) -> Result<Option<ConnectionParts>, IrError> {
         let start = self.pos;
         let left = self.read_id()?;
         self.skip_ws_and_comments();
@@ -549,7 +552,7 @@ impl<'a> Parser<'a> {
     fn read_attr_value(&mut self) -> Result<String, IrError> {
         self.skip_ws_and_comments();
         if self.peek_char() == Some('"') {
-            return Ok(self.read_quoted()?);
+            return self.read_quoted();
         }
         let start = self.pos;
         while let Some(c) = self.peek_char() {
@@ -567,7 +570,7 @@ impl<'a> Parser<'a> {
     fn read_id(&mut self) -> Result<String, IrError> {
         self.skip_ws_and_comments();
         if self.peek_char() == Some('"') {
-            return Ok(self.read_quoted()?);
+            return self.read_quoted();
         }
         let start = self.pos;
         while let Some(c) = self.peek_char() {
@@ -586,7 +589,7 @@ impl<'a> Parser<'a> {
     fn read_label_token(&mut self) -> Result<String, IrError> {
         self.skip_ws_and_comments();
         if self.peek_char() == Some('"') {
-            return Ok(self.read_quoted()?);
+            return self.read_quoted();
         }
         let start = self.pos;
         while let Some(c) = self.peek_char() {
@@ -725,7 +728,6 @@ fn parse_connection(line: &str) -> Option<(String, String)> {
                 .split(':')
                 .next()
                 .unwrap_or(rest)
-                .trim()
                 .split_whitespace()
                 .next()
                 .unwrap_or("");

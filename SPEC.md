@@ -2,9 +2,18 @@
 
 ## Overview
 
-`diagram` is a Rust CLI and MCP **diagram platform**: render, generate, analyze, and interchange diagrams via a canonical **IR**, with **Compatibility** adapters for Mermaid, Graphviz DOT, PlantUML (sequence, class, activity), and more planned. See `CONTEXT.md` and `docs/adr/0001-canonical-ir-and-format-adapters.md`.
+`diagram` is a Rust CLI and MCP platform for **non-AI code ↔ UML conversion** — deterministic, zero-token, sub-millisecond on commodity hardware. The canonical **IR** is the spine that connects source code (via tree-sitter) with UML surfaces (Mermaid, PlantUML, DOT, D2, JSON IR). See `CONTEXT.md`, `docs/adr/0001-canonical-ir-and-format-adapters.md`, and `docs/adr/0002-non-ai-code-uml-conversion.md`.
 
-**Current shipping surface:** Mermaid, JSON IR, DOT, D2, PlantUML → `Document`; `import`/`export`/`lossiness`; info/render/preview (SVG/PNG/PDF); flowchart generate/edit; validate/diff/merge/metrics; markdown pipeline; multi-diagram documents.
+**Why non-AI?** AI-based code→diagram is slow, expensive in tokens, and non-deterministic. A tree-sitter grammar can produce the same diagram in microseconds, for free, byte-identically, on the same input. See ADR-0002.
+
+**Current shipping surface:**
+- **Code → UML**: `generate-class | generate-tree | generate-call <file>` (Rust, TypeScript) via tree-sitter → IR → any format. Same shape for CLI and MCP (`generate_class_diagram` / `generate_tree_diagram` / `generate_call_diagram`).
+- **UML → Code**: `generate-skeleton <diagram> --lang rust|typescript` (CLI + MCP `generate_skeleton_diagram`) — see § Code ↔ UML.
+- **Format interchange**: Mermaid, JSON IR, DOT, D2, PlantUML → `Document`; `import`/`export`/`lossiness`.
+- **Render / preview**: SVG/PNG/PDF, watch mode, light/dark theme.
+- **Analyze**: validate, diff, merge, metrics.
+- **Markdown / multi-diagram**: fenced-block pipeline, per-index / output-dir render.
+- **Graph edit**: add/remove/update node + edge for flowcharts.
 
 ## Canonical JSON IR (shipped)
 
@@ -29,9 +38,9 @@
 | Import | `Format` bytes → `Document` IR (`import`, `import_diagram`) |
 | Export | `Document` IR → `Format` bytes (`export`, `export_diagram`) |
 | Lossiness | Export fidelity report per target Format (`lossiness`, `export --report`, `lossiness_report`) |
-| Render | `Document` / `Diagram` → SVG, PNG, or vector PDF |
+| Render | `Document` / `Diagram` → SVG, PNG, vector PDF, or ASCII art |
 | Analyze | `Document` → validation issues, diff, metrics JSON |
-| Generate | MCP/CLI mutations and scaffolds against IR |
+| Generate | MCP/CLI mutations and scaffolds against IR; architecture templates |
 
 ### Supported interchange formats
 
@@ -42,8 +51,62 @@
 | `dot` / `gv` | ✓ flowchart | ✓ flowchart | Digraph subset |
 | `d2` | ✓ flowchart | ✓ flowchart | Containers as subgraphs |
 | `plantuml` / `puml` | ✓ sequence, class, activity | ✓ sequence, class, activity-shaped flowchart | Activity imports as flowchart IR |
+|| `drawio` / `.drawio` | ✓ flowchart | ✓ flowchart | `<mxfile>/<diagram>/<mxGraphModel>` uncompressed subset |
 
-Detection: content heuristics (`@startuml`, `digraph`, `direction:`, `{` JSON) plus path extension. Override with `--from` / `--to` on CLI or MCP.
+Detection: content heuristics (`@startuml`, `digraph`, `direction:`, `<mxfile`, `{` JSON) plus path extension. Override with `--from` / `--to` on CLI or MCP.
+
+## Code ↔ UML (non-AI)
+
+`diagram` treats source code and UML as two views of the same IR. The two directions are symmetric, deterministic, and share the same renderer / format-export pipeline as Format interchange.
+
+### Code → UML
+
+`generate-class | generate-tree | generate-call <file>`:
+
+1. Detect language from the file extension (override with `--lang`).
+2. Parse with the matching tree-sitter grammar (Rust / TypeScript shipped; pluggable for more).
+3. Walk the tree and emit a canonical `Document`:
+   - `class` → `Diagram::Class` (structs/classes, enums, traits/interfaces, impls, relations)
+   - `tree`  → `Diagram::Flowchart` (top-level items + import/use edges from a root file node)
+   - `call`  → `Diagram::Flowchart` (function call graph; missing callees synthesized as external nodes)
+4. Export the Document through the standard `formats::export_path` pipeline in any supported format (Mermaid, JSON IR, DOT, D2, PlantUML).
+
+Properties:
+- **Deterministic** — same input → byte-identical output.
+- **Zero tokens** — no model call, no API key, no network.
+- **Fast** — extraction is tree-sitter-driven, in microseconds per file.
+- **Pluggable** — adding a new language is a `Language` variant + an `extract(source, kind)` module; the IR pipeline is unchanged.
+
+### UML → Code (shipped: `generate-skeleton`)
+
+`generate-skeleton <diagram-file> --lang rust|typescript --output <file>`:
+
+1. Load any supported diagram (class / flowchart / sequence / state / ER) via `ir::load_path`.
+2. Walk the IR and emit a compilable stub:
+   - **Class → Code**:
+     - Rust: `struct` / `trait` / `enum` per class; methods as `fn name(args) [-> ret] { todo!() }`; inheritance / realization → `impl Trait for Type {}`; composition / aggregation / association / dependency → field on `from` struct; notes as `// note …` comments.
+     - TypeScript: `class A extends B implements I` / `interface` / `enum` per class; relation fields appended with arrow + cardinality as a comment.
+   - **Flowchart → Code**: nodes with shape `stadium` → function stubs; `cylinder` → struct shell; `rect`/`hexagon` → `const`; `diamond` / `circle` → comments; subgraphs → `pub mod` (Rust) / `namespace` (TS); edges preserved as `// from --> to // label` comments.
+   - **Sequence → Code**: participants → struct / interface shells; messages → method signatures on the receiver; notes as comments.
+   - **State → Code**: states → enum variants (Rust) / string union (TS); transitions as `// from -> to : label` comments.
+   - **ER → Code**: entities → struct (Rust) / interface (TS); attributes as fields (PK marked); relationships as `// A 1--* B` comments.
+   - **Gantt**: skipped with a leading comment (no skeleton semantics).
+3. Write the source file in the chosen language.
+
+Properties:
+- **Signatures are real** (compilable), **bodies are empty stubs** (`todo!()` in Rust, `// TODO` in TS).
+- **Bidirectional with Code → UML** — roundtrip test asserts that for a Class IR, the set of type-level names + relations after `Source → IR → Skeleton → IR` matches `Source → IR` exactly (see `tests/integration_tests.rs`).
+- **Deterministic** — same diagram → byte-identical skeleton.
+
+This direction closes the "↔" half of code ↔ UML: keep an external architecture diagram in lockstep with code without paying model tokens or hand-editing source.
+
+### Round-trip use
+
+```
+   source.rs ──► tree-sitter ──► IR ──► diagram.mmd   (Code → UML, today)
+   diagram.mmd ──► IR ──► source_skeleton.rs          (UML → Code, planned)
+   source_skeleton.rs ──► tree-sitter ──► IR ──► same diagram.mmd   (roundtrip stability)
+```
 
 ## Supported Mermaid Syntax (Compatibility)
 
@@ -157,21 +220,26 @@ IR/import/export errors use `IrError` (string messages).
 diagram <COMMAND>
 
 Commands:
-  parse        Parse and print canonical JSON IR
-  ir           Alias for parse (canonical JSON IR)
-  import       Import Mermaid/DOT/D2/PlantUML/JSON → JSON IR file
-  export       Export IR → Mermaid, JSON, DOT, D2, or PlantUML
-  lossiness    Report export fidelity / unsupported fields
-  info         Show diagram summary
-  render       Render as SVG, PNG, or PDF (use --output extension, --watch, --theme)
-  preview      Live browser SVG preview
-  validate     Validate diagram
-  metrics      Structural metrics as JSON
-  create       Create a new diagram scaffold
-  diff         Compare two documents (any import format; IR-level structural diff)
-  merge        Merge two diagrams
-  markdown     Render fenced diagram blocks; rewrite image links
-  mcp          Start MCP server (stdio)
+  parse             Parse and print canonical JSON IR
+  ir                Alias for parse (canonical JSON IR)
+  import            Import Mermaid/DOT/D2/PlantUML/draw.io/JSON → JSON IR file
+  export            Export IR → Mermaid, JSON, DOT, D2, PlantUML, or draw.io
+  lossiness         Report export fidelity / unsupported fields
+  info              Show diagram summary
+  render            Render as SVG, PNG, PDF, or ASCII art (use --output extension, --watch, --theme)
+  preview           Live browser SVG preview
+  validate          Validate diagram
+  metrics           Structural metrics as JSON
+  create            Create a new diagram scaffold or architecture template
+  list-templates    List built-in architecture templates
+  generate-class    Code → class diagram from source file (tree-sitter; Rust, TypeScript)
+  generate-tree     Code → module / file tree flowchart from source file
+  generate-call     Code → function call graph from source file
+  generate-skeleton Diagram → compilable Rust / TypeScript skeleton (UML → code)
+  diff              Compare two documents (any import format; IR-level structural diff)
+  merge             Merge two diagrams
+  markdown          Render fenced diagram blocks; rewrite image links
+  mcp               Start MCP server (stdio)
   add-node | remove-node | update-node | add-edge | remove-edge | update-edge ...
   get-node | get-edge | list-nodes | list-edges | get-mermaid | set-mermaid ...
 ```
@@ -188,10 +256,16 @@ Commands:
 | `export_diagram` | path, output, to? | Status JSON + lossiness |
 | `lossiness_report` | path, to? | Lossiness JSON |
 | `metrics_diagram` | path | Metrics JSON |
-| `create_diagram` | kind, output | Status JSON |
+| `create_diagram` | kind?, output, template? | Status JSON (kind or template) |
+| `generate_class_diagram` | path, output, lang? | Status JSON (kind, format, output, classes/relations) — code → UML |
+| `generate_tree_diagram` | path, output, lang? | Status JSON (kind, format, output, nodes/edges) — code → UML |
+| `generate_call_diagram` | path, output, lang? | Status JSON (kind, format, output, nodes/edges) — code → UML |
+| `generate_skeleton_diagram` | path, lang, output | Status JSON (language, source_diagram, output, bytes) — UML → code |
 | `render_svg` | path, theme? | SVG string |
 | `render_png` | path, output, theme? | Status JSON |
 | `render_pdf` | path, output, theme? | Status JSON |
+| `render_ascii` | path | ASCII art text (flowchart boxes; text outline for other kinds) |
+| `list_templates` | (none) | JSON array of built-in architecture templates |
 | `process_markdown` | path, output_dir, output, format?, theme? | Status JSON |
 | `diff_diagram` | left, right | `DocumentDiff` JSON (per-diagram entries, summary) |
 | `merge_diagram` | left, right, output | Status JSON (**flowchart-only**) |
@@ -211,7 +285,7 @@ Commands:
 | `add_nodes` | path, items[] | Status JSON (**flowchart-only**) |
 | `add_edges` | path, items[] | Status JSON (**flowchart-only**) |
 
-Import/export `from`/`to`: `mermaid`, `json`, `dot`, `d2`, `plantuml`.
+Import/export `from`/`to`: `mermaid`, `json`, `dot`, `d2`, `plantuml`, `drawio`.
 
 ## Data Model (flowchart IR excerpt)
 
@@ -267,6 +341,7 @@ Per-kind `detail`: flowchart (`added_nodes` / `removed_nodes` / `modified_nodes`
 
 ```rust
 pub mod analyze;
+pub mod ascii;
 pub mod class;
 pub mod cli;
 pub mod composite;

@@ -276,10 +276,10 @@ fn parse_fragment_start(text: &str) -> Option<(FragmentKind, String)> {
         if text == prefix {
             return Some((kind, String::new()));
         }
-        if let Some(rest) = text.strip_prefix(prefix) {
-            if rest.starts_with(' ') || rest.is_empty() {
-                return Some((kind, rest.trim().to_string()));
-            }
+        if let Some(rest) = text.strip_prefix(prefix)
+            && (rest.starts_with(' ') || rest.is_empty())
+        {
+            return Some((kind, rest.trim().to_string()));
         }
     }
     None

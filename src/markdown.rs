@@ -209,7 +209,7 @@ pub fn process_markdown(
     }
 
     let mut output_lines: Vec<String> = lines.iter().map(|s| (*s).to_string()).collect();
-    replacements.sort_by(|a, b| b.0.cmp(&a.0));
+    replacements.sort_by_key(|r| std::cmp::Reverse(r.0));
     for (start, end, replacement) in replacements {
         output_lines.splice(start..=end, [replacement]);
     }

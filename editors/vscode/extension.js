@@ -15,6 +15,9 @@ function activate(context) {
     vscode.commands.registerCommand("diagram.preview", () => previewActive()),
     vscode.commands.registerCommand("diagram.validate", () => validateActive()),
     vscode.commands.registerCommand("diagram.renderSvg", () => renderSvgActive()),
+    vscode.commands.registerCommand("diagram.generateClass", () => generateFromSource("generate-class")),
+    vscode.commands.registerCommand("diagram.generateTree", () => generateFromSource("generate-tree")),
+    vscode.commands.registerCommand("diagram.generateCall", () => generateFromSource("generate-call")),
     vscode.workspace.onDidSaveTextDocument((doc) => {
       const cfg = vscode.workspace.getConfiguration("diagram");
       if (!cfg.get("autoPreviewOnSave", true)) {
@@ -176,6 +179,48 @@ async function renderSvgActive() {
     vscode.window.showInformationMessage(`Wrote ${uri.fsPath}`);
   } catch (e) {
     vscode.window.showErrorMessage(`diagram render: ${e.message || e}`);
+  }
+}
+
+async function generateFromSource(subcommand) {
+  let file;
+  try {
+    file = activeDiagramPath();
+  } catch (e) {
+    vscode.window.showErrorMessage(e.message);
+    return;
+  }
+  const ext = path.extname(file).slice(1);
+  if (!/^(rs|ts)$/i.test(ext)) {
+    vscode.window.showErrorMessage(
+      `Code generation needs a .rs or .ts file (got .${ext})`
+    );
+    return;
+  }
+  const stem = path.basename(file).replace(/\.[^.]+$/, "");
+  const dir = path.dirname(file);
+  const defaultName = `${stem}.${subcommand.split("-")[1]}.mmd`;
+  const uri = await vscode.window.showSaveDialog({
+    defaultUri: vscode.Uri.file(path.join(dir, defaultName)),
+    filters: { Mermaid: ["mmd"], JSON: ["json"], DOT: ["dot"], D2: ["d2"] },
+  });
+  if (!uri) {
+    return;
+  }
+  try {
+    await runDiagram(cliPath(), [
+      subcommand,
+      file,
+      "--output",
+      uri.fsPath,
+    ]);
+    const channel = vscode.window.createOutputChannel("diagram");
+    channel.clear();
+    channel.appendLine(`Generated ${uri.fsPath}`);
+    channel.show(true);
+    vscode.window.showInformationMessage(`Generated ${uri.fsPath}`);
+  } catch (e) {
+    vscode.window.showErrorMessage(`diagram ${subcommand}: ${e.message || e}`);
   }
 }
 

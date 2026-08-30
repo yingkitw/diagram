@@ -397,12 +397,11 @@ impl<'a> Parser<'a> {
         };
         self.nodes.push(node);
         self.apply_node_style(id, attrs);
-        if let Some(sg_id) = self.subgraph_stack.last() {
-            if let Some(sg) = self.subgraphs.iter_mut().find(|s| &s.id == sg_id) {
-                if !sg.nodes.contains(&id.to_string()) {
-                    sg.nodes.push(id.to_string());
-                }
-            }
+        if let Some(sg_id) = self.subgraph_stack.last()
+            && let Some(sg) = self.subgraphs.iter_mut().find(|s| &s.id == sg_id)
+            && !sg.nodes.contains(&id.to_string())
+        {
+            sg.nodes.push(id.to_string());
         }
         Ok(())
     }
@@ -577,11 +576,7 @@ impl<'a> Parser<'a> {
 
     fn consume_edge_op(&mut self) {
         self.skip_ws_and_comments();
-        if self.directed {
-            self.pos += 2;
-        } else {
-            self.pos += 2;
-        }
+        self.pos += 2;
     }
 
     fn consume_keyword(&mut self, kw: &str) -> bool {
@@ -633,7 +628,7 @@ impl<'a> Parser<'a> {
     }
 
     fn peek_is(&self, c: char) -> bool {
-        self.input[self.pos..].chars().next() == Some(c)
+        self.input[self.pos..].starts_with(c)
     }
 
     fn try_consume_char(&mut self, expected: char) -> bool {
