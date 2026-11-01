@@ -31,5 +31,8 @@ pub mod png;
 #[cfg(feature = "native")]
 pub mod preview;
 
+#[cfg(feature = "gui")]
+pub mod gui;
+
 #[cfg(feature = "wasm")]
 pub mod wasm;

@@ -77,3 +77,7 @@ _Avoid_: Template (overlaps with our `template` notion elsewhere), scaffold (alr
 **Non-AI / Deterministic**:
 All conversion is performed by local grammars and code, never by a language model. Every run on the same input produces the same output; no network, no tokens, no latency budget.
 _Avoid_: Heuristic (we are explicit; heuristics are fine when labelled), "smart" (implies LLM)
+
+**Desktop GUI**:
+`diagram-gui`, the pure-Rust egui/eframe editor (`--features gui`). A consumer of the platform: it edits a positioned document locally (offline, versioned JSON) and exports via the same SVG/PNG pipeline and flowchart IR as everything else.
+_Avoid_: Web port (it is not a browser app), frontend (there is no backend)

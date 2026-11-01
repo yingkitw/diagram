@@ -74,10 +74,17 @@ main.rs
   │     ├── typescript_lang.rs — tree-sitter TypeScript → IR (class / tree / call)
   │     └── skeleton.rs    — IR → compilable Rust / TypeScript skeleton (UML → code)
   ├── layout.rs    — flowchart layered layout
-  └── renderer.rs  — flowchart Layout → SVG
+  ├── renderer.rs  — flowchart Layout → SVG
+  └── gui/         — desktop GUI (gui feature: eframe/egui, offline)
+        ├── model.rs   — egui-free document + editor (undo/redo, hit tests, SVG/IR export)
+        ├── shapes.rs  — palette catalog (Basic…UML + AWS/Azure/GCP) + SVG geometry
+        ├── canvas.rs  — egui canvas: paint, pan/zoom, drag, marquee, link, resize
+        └── app.rs     — eframe shell: menus, palette, properties, file dialogs
 ```
 
 `formats::detect` chooses Format from content and path; `import_str` / `export_str` bridge to `ir::Document`. Lossiness runs before blocked exports.
+
+The GUI is a **consumer** of the platform, not a second pipeline: its egui-free `model` exports positioned SVG directly (WYSIWYG), PNG via `png.rs`, and Mermaid via the flowchart IR (`to_ir`). Persistence is versioned local JSON — no server, no network, no tokens.
 
 ## Module status
 
@@ -91,6 +98,7 @@ main.rs
 | `codegen` (code → UML) | tree-sitter Rust / TypeScript → IR (class / tree / call) | Shipped v1 — `generate-class|tree|call`; CLI + MCP |
 | `codegen` (UML → code) | IR → skeleton Rust / TypeScript source | Shipped v1 — `generate-skeleton`; CLI + MCP; roundtrip stability test |
 | `lossiness` | Export fidelity warnings per Format | Shipped v1 |
+| `gui` | Desktop editor (egui/eframe); offline JSON persistence, SVG/PNG/Mermaid export | Shipped v1 — `--features gui`, `diagram-gui` binary; egui-free `gui::model` unit-tested |
 
 Mermaid parsers live under `formats::mermaid`; kind IR types remain in `parser` / `sequence` / `class` / `gantt`.
 
@@ -166,3 +174,7 @@ Minimal `tokio` HTTP on localhost; HTML polls `/svg`.
 ### VS Code extension
 
 `editors/vscode/` is a thin client: commands shell out to the `diagram` binary and show SVG in a webview. Layout/render stay in Rust — the extension does not embed Mermaid.js or Chromium.
+
+### Desktop GUI
+
+`gui/` + `src/bin/diagram-gui.rs` (feature `gui` = `native` + `eframe` + `rfd`): a pure-Rust egui editor in the spirit of graphine. The document/editor core (`gui::model`, `gui::shapes`) has no egui imports, so history, hit-testing, JSON roundtrip, and SVG determinism are unit-tested headlessly. State is local files only (versioned JSON via `rfd` dialogs); exports are positioned SVG (deterministic), PNG via `png::svg_to_png`, and Mermaid via the flowchart IR.

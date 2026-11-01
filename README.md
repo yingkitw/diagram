@@ -24,12 +24,14 @@ Diagrams and source drift the moment a human (or a slow, token-billed LLM) has t
 - **Fast** — a typical Rust source file extracts a class diagram in single-digit milliseconds on commodity hardware.
 - **Bidirectional** — code → diagram (class / tree / call) and diagram → skeleton source (Rust / TypeScript).
 - **Multi-format** — Mermaid, PlantUML, Graphviz DOT, D2, draw.io XML, JSON IR; SVG/PNG/PDF/ASCII render.
+- **Desktop GUI** — a pure-Rust egui editor (`diagram-gui`) for drag-and-drop diagramming, fully offline / local-first.
 
 ## Contents
 
 - [Why](#why)
 - [Quick start](#quick-start)
 - [Code ↔ UML](#code--uml)
+- [Desktop GUI](#desktop-gui)
 - [Supported formats](#supported-formats)
 - [CLI commands](#cli-commands)
 - [MCP (AI agents)](#mcp-ai-agents)
@@ -133,6 +135,22 @@ diagram generate-skeleton sequence.mmd --lang typescript --output client.ts
 ```
 
 This makes the roundtrip **Code → UML → Skeleton** useful for bootstrapping a refactor, generating stub interfaces from an architecture diagram, or keeping an externally-authored diagram in lockstep with code.
+
+## Desktop GUI
+
+`diagram-gui` is a pure-Rust desktop editor (egui/eframe) in the spirit of graphine — drag-and-drop diagramming with no browser, no server, no network. Fully offline / local-first: documents save as versioned JSON on disk.
+
+```bash
+cargo run --bin diagram-gui --features gui
+```
+
+- **Shape palette** (~60 shapes): Basic, Flowchart, Data, Network, Security, UML, plus AWS / Azure / GCP service entries with provider badges.
+- **Canvas**: drag-and-drop from the palette (or click-to-place), pan/zoom with grid + snap, marquee multi-select, port-drag edge creation, resize handle, double-click inline label editing.
+- **Edit**: undo/redo (coalesced drags), duplicate, z-order (front/forward/backward/back), per-node fill/stroke/text colors, edge label/style (arrow/dashed/thick)/color.
+- **File**: New / Open / Save / Save As (`.json`), Export **SVG** (positioned, WYSIWYG), **PNG** (via resvg), **Mermaid** (via the flowchart IR — topology only, lossy for positions).
+- **Shortcuts**: Ctrl/Cmd+S save, Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z undo/redo, Ctrl/Cmd+D duplicate, Ctrl/Cmd+A select all, Del delete, arrows nudge, Ctrl/Cmd+scroll zoom.
+
+The GUI core (`src/gui/model.rs`, `src/gui/shapes.rs`) is egui-free and unit-tested headlessly; exports reuse the platform's PNG pipeline and IR.
 
 ## Supported formats
 
@@ -270,6 +288,7 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CONTEXT.md`](CONTEXT.md), [`docs/adr
 
 ```bash
 cargo test
+cargo test --features gui       # includes headless GUI model tests
 cargo test --test embed_tests   # Wasm/embed string API × examples/embed
 make vscode-check   # validates editors/vscode package.json + extension.js
 make wasm-check     # typecheck Wasm feature for wasm32-unknown-unknown
@@ -280,6 +299,12 @@ make wasm-check     # typecheck Wasm feature for wasm32-unknown-unknown
 ```
 src/
 ├── main.rs / cli.rs / mcp.rs / preview.rs   # native feature
+├── bin/diagram-gui.rs                       # desktop GUI entry (gui feature)
+├── gui/                                     # egui desktop editor (gui feature)
+│   ├── model.rs                             # egui-free document + editor + SVG/IR export
+│   ├── shapes.rs                            # palette catalog + SVG geometry
+│   ├── canvas.rs                            # egui canvas (paint + interactions)
+│   └── app.rs                               # eframe shell (menus, panels, file I/O)
 ├── embed.rs / wasm.rs                       # browser embed
 ├── ir.rs / formats/ / lossiness.rs / analyze.rs / generate.rs / markdown.rs / composite.rs
 ├── ascii.rs                                 # ASCII art render

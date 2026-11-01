@@ -14,6 +14,7 @@
 - **Analyze**: validate, diff, merge, metrics.
 - **Markdown / multi-diagram**: fenced-block pipeline, per-index / output-dir render.
 - **Graph edit**: add/remove/update node + edge for flowcharts.
+- **Desktop GUI**: `diagram-gui` (feature `gui`) — egui editor, offline JSON persistence, SVG/PNG/Mermaid export (§ Desktop GUI).
 
 ## Canonical JSON IR (shipped)
 
@@ -350,6 +351,7 @@ pub mod er;
 pub mod formats;
 pub mod gantt;
 pub mod generate;
+pub mod gui;   // gui feature (desktop editor)
 pub mod ir;
 pub mod layout;
 pub mod lossiness;
@@ -396,6 +398,47 @@ Feature `wasm` (build with `--no-default-features --features wasm`) exports:
 | `parse_to_ir_json(source)` | Auto-detect Format → Document IR JSON |
 
 Demo: `make wasm` then serve `examples/wasm/`. Fixtures: `examples/embed/` (covered by `cargo test --test embed_tests`). Native CLI/MCP/PNG/PDF stay behind the default `native` feature.
+
+## Desktop GUI
+
+Feature `gui` (= `native` + `eframe` + `rfd`) builds `diagram-gui` — a pure-Rust egui/eframe editor (graphine-style), fully offline / local-first. Launch: `cargo run --bin diagram-gui --features gui` or `make gui`.
+
+**Document format** (`GuiDocument`, versioned JSON):
+
+```json
+{
+  "version": 1,
+  "name": "Untitled",
+  "nodes": [
+    { "id": "n1", "shape": "aws/lambda", "label": "Lambda", "x": 300, "y": 100,
+      "w": 120, "h": 60, "fill": [255,243,224], "stroke": [230,115,0], "text": [31,35,40] }
+  ],
+  "edges": [
+    { "id": "e1", "from": "n1", "to": "n2", "label": "", "style": "Arrow", "color": [87,96,106] }
+  ]
+}
+```
+
+- `x`/`y` are the node centre in world coordinates; node order in `nodes[]` is the z-order (later = on top).
+- `shape` is a palette id from `gui::shapes::CATALOG` (`basic/rect`, `flow/decision`, `data/database`, `uml/actor`, `aws/*`, `az/*`, `gcp/*`, …); unknown ids degrade to a rectangle.
+- Edge `style` reuses the flowchart IR `EdgeStyle` (`Arrow` / `Dashed` / `Thick`).
+- Load sanitizes: duplicate ids and dangling edges are dropped.
+
+**Editing model** (`gui::model::Editor`, egui-free, unit-tested headlessly):
+
+- Snapshot-based undo/redo (50 steps) with gesture coalescing (a drag = one undo step; `end_gesture` breaks coalescing).
+- Deterministic ids (`n1…`, `e1…`) with counters resumed from the loaded document.
+- Ops: add/move/resize/label/shape-swap/colors, connect (rejects self-loops and duplicate ordered pairs), delete (cascades to incident edges), duplicate (copies internal edges), z-order, marquee/hit queries.
+
+**Exports:**
+
+| Export | Path | Fidelity |
+|--------|------|----------|
+| SVG | `Editor::to_svg` — positioned, WYSIWYG | Positions, colors, shapes, badges preserved; deterministic (byte-identical for same document) |
+| PNG | `to_svg` → `png::svg_to_png` (resvg) | Raster of the SVG |
+| Mermaid | `Editor::to_ir` → flowchart IR → `to_mermaid` | Topology only: positions/colors dropped, shapes degrade to the IR subset (Rect/Diamond/Stadium/Hexagon/Cylinder/Circle) |
+
+The GUI is a consumer of the platform, not a second pipeline: no network, no server, no model calls. Persistence is local files via `rfd` dialogs.
 
 ## Rendering
 

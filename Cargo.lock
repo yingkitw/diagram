@@ -504,6 +504,7 @@ dependencies = [
  "clap",
  "console_error_panic_hook",
  "eframe",
+ "egui",
  "notify",
  "resvg",
  "rfd",

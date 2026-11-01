@@ -61,6 +61,7 @@ Competitive edge vs Mermaid.js / PlantUML / AI diagram tools: native binary, MCP
 - [x] Architecture templates (`create --template aws-3tier|gcp-microservices|azure-hub-spoke`) — deterministic, zero-token (learned from graphine)
 - [x] ASCII art render (`diagram render … --output .txt`) — deterministic, zero-token, for READMEs/terminal (learned from graphine)
 - [x] draw.io XML adapter (import/export) — uncompressed `<mxfile>` subset, flowchart IR (learned from graphine)
+- [x] **Desktop GUI** (`diagram-gui`, `--features gui`) — pure-Rust egui/eframe graphine-style editor: shape palette (Basic/Flowchart/Data/Network/Security/UML + AWS/Azure/GCP), drag-and-drop canvas, edges, undo/redo, z-order, local JSON save/load, positioned SVG + PNG + Mermaid export. Fully offline / local-first; egui-free model core headlessly tested (learned from graphine)
 - [ ] Plugin API for custom shapes / render backends
 - [x] Wasm embed for browser preview without local server
 - [x] Semantic diff v1 (IR-level `DocumentDiff` for all kinds incl. state/er; multi-diagram)
@@ -85,6 +86,8 @@ Features learned from graphine (re-implemented as non-AI / deterministic / zero-
 - [x] **Architecture templates** (`aws-3tier`, `gcp-microservices`, `azure-hub-spoke`)
 - [x] **ASCII art export** (IR → text; no canvas/rasterizer)
 - [x] **draw.io XML adapter** (import + export)
+- [x] **Desktop GUI** (`diagram-gui`) — egui graphine-style editor, pure Rust, offline/local-first
+- [ ] **GUI ↔ IR bridge** — import a Mermaid/IR file into the GUI canvas (auto-layout) so code→UML output is editable in the desktop app
 - [ ] **IaC ↔ IR** — Terraform / CDK / Pulumi / Bicep / CloudFormation → IR and IR → IaC skeletons (extends the bidirectional code↔UML story to infrastructure)
 - [ ] **Force-directed layout** (renderer; improve on layered BFS)
 - [ ] **Color-coded SVG diff render** (visual diff output)

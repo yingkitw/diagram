@@ -1,4 +1,4 @@
-.PHONY: run dev parse info render mcp test vscode-check wasm wasm-check
+.PHONY: run dev parse info render mcp test gui vscode-check wasm wasm-check
 
 # Run the MCP server
 run:
@@ -27,6 +27,10 @@ dev:
 # Full Rust tests
 test:
 	cargo test
+
+# Desktop GUI (egui/eframe, offline)
+gui:
+	cargo run --bin diagram-gui --features gui
 
 # Validate VS Code extension package
 vscode-check:
